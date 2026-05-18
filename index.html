@@ -727,7 +727,7 @@ function navigate(page) {
       case 'borrow': renderBorrow(); break;
       case 'history': renderHistory(); break;
       case 'settings': await renderSettings(); break;
-      case 'users': renderUsers(); break;
+      case 'users': await renderUsers(); break;
       case 'approve': await renderApprove(); break;
     }
   }, 80);
@@ -1404,34 +1404,68 @@ async function confirmDeleteEq(id) {
 }
 
 // ==================== USERS ====================
-function renderUsers() {
+async function renderUsers() {
   document.getElementById('topbarActions').innerHTML = `<button class="btn btn-primary" onclick="openAddUser()">➕ เพิ่มผู้ใช้</button>`;
   document.getElementById('pageContent').innerHTML = `
     <div class="card">
-      <div class="section-header"><h2>👥 จัดการผู้ใช้</h2></div>
+      <div class="section-header">
+        <h2>👥 จัดการผู้ใช้</h2>
+        <span id="userSyncStatus" style="font-size:0.8rem;color:var(--text2);display:flex;align-items:center;gap:6px">
+          <span class="loading-spinner" style="border-color:rgba(0,0,0,0.15);border-top-color:var(--primary)"></span> กำลังโหลด...
+        </span>
+      </div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Username</th><th>Role</th><th>สิทธิ์</th><th>จัดการ</th></tr></thead>
-          <tbody id="usersBody">${renderUsersRows()}</tbody>
+          <tbody id="usersBody">
+            <tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text2)">
+              <span class="loading-spinner" style="border-color:rgba(0,0,0,0.15);border-top-color:var(--accent);width:22px;height:22px;border-width:3px"></span>
+            </td></tr>
+          </tbody>
         </table>
       </div>
     </div>
   `;
+  const res = await gasRequest('getUsers');
+  const syncEl = document.getElementById('userSyncStatus');
+  if (res.success) {
+    state.users = res.data || [];
+    if (syncEl) syncEl.innerHTML = `<span style="color:var(--success)">✅ ซิงค์แล้ว (${state.users.length} users)</span>`;
+  } else {
+    if (syncEl) syncEl.innerHTML = `<span style="color:var(--danger)">⚠️ โหลดไม่สำเร็จ</span>`;
+    showToast('⚠️ โหลดข้อมูลผู้ใช้ไม่สำเร็จ: ' + (res.message || ''));
+  }
+  const bodyEl = document.getElementById('usersBody');
+  if (bodyEl) bodyEl.innerHTML = renderUsersRows();
 }
 
 function renderUsersRows() {
-  return state.users.map(u=>`
+  if (!state.users || state.users.length === 0) {
+    return `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text2)">ไม่มีข้อมูลผู้ใช้</td></tr>`;
+  }
+  return state.users.map(u => {
+    // GAS ส่ง lowercase keys: username, password, role
+    const uname = String(u.username || u.Username || '').trim();
+    const role  = String(u.role     || u.Role     || 'user').trim();
+    if (!uname) return '';
+    return `
     <tr>
-      <td><div style="display:flex;align-items:center;gap:8px">
-        <div class="user-avatar" style="width:28px;height:28px;font-size:0.75rem">${u.username[0].toUpperCase()}</div>
-        <span style="font-weight:500">${u.username}</span>
-      </div></td>
-      <td>${u.role}</td>
-      <td>${roleBadge(u.role)}</td>
-      <td><div class="row-actions">
-        <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')" ${u.username==='admin'?'disabled':''}>🗑</button>
-      </div></td>
-    </tr>`).join('');
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="user-avatar" style="width:30px;height:30px;font-size:0.78rem;flex-shrink:0">${uname[0].toUpperCase()}</div>
+          <span style="font-weight:600">${uname}</span>
+        </div>
+      </td>
+      <td><span style="font-size:0.85rem;color:var(--text2)">${role}</span></td>
+      <td>${roleBadge(role)}</td>
+      <td>
+        <div class="row-actions">
+          <button class="btn btn-danger btn-sm" onclick="deleteUser('${uname}')"
+            ${uname === 'admin' ? 'disabled title="ไม่สามารถลบ admin"' : ''}>🗑 ลบ</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 function openAddUser() {
@@ -1457,15 +1491,45 @@ async function saveAddUser() {
   const password = document.getElementById('newPass').value.trim();
   const role = document.getElementById('newRole').value;
   if (!username || !password) { showToast('⚠️ กรุณากรอกข้อมูลให้ครบ'); return; }
-  if (state.users.find(u=>u.username===username)) { showToast('⚠️ Username นี้มีอยู่แล้ว'); return; }
-  const res = await gasRequest('addUser', { data: { username, password, role }});
-  if (res.success) { showToast('✅ เพิ่มผู้ใช้แล้ว'); closeModal(); renderUsers(); }
+  if (state.users.find(u => (u.username||u.Username||'') === username)) {
+    showToast('⚠️ Username นี้มีอยู่แล้ว'); return;
+  }
+  const saveBtn = document.querySelector('#modalBody .btn-primary');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<span class="loading-spinner"></span> กำลังบันทึก...'; }
+  const res = await gasRequest('addUser', { data: { username, password, role } });
+  if (res.success) {
+    showToast('✅ เพิ่มผู้ใช้แล้ว');
+    closeModal();
+    await renderUsers();
+  } else {
+    showToast('❌ ' + (res.message || 'เกิดข้อผิดพลาด'));
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '💾 บันทึก'; }
+  }
 }
 
-async function deleteUser(username) {
-  if (!confirm(`ยืนยันการลบผู้ใช้ "${username}"?`)) return;
+function deleteUser(username) {
+  openModal('🗑 ยืนยันการลบผู้ใช้', `
+    <p style="margin-bottom:16px">ต้องการลบผู้ใช้ <strong>${username}</strong> ออกจากระบบ?</p>
+    <p style="color:var(--danger);font-size:0.85rem;margin-bottom:20px">⚠️ ข้อมูลจะถูกลบออกจาก Google Sheet ถาวร</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-danger" onclick="confirmDeleteUser('${username}')">🗑 ยืนยันลบ</button>
+    </div>
+  `);
+}
+
+async function confirmDeleteUser(username) {
+  const delBtn = document.querySelector('#modalBody .btn-danger');
+  if (delBtn) { delBtn.disabled = true; delBtn.innerHTML = '<span class="loading-spinner"></span> กำลังลบ...'; }
   const res = await gasRequest('deleteUser', { username });
-  if (res.success) { showToast('🗑 ลบผู้ใช้แล้ว'); renderUsers(); }
+  if (res.success) {
+    showToast('🗑 ลบผู้ใช้แล้ว');
+    closeModal();
+    await renderUsers();
+  } else {
+    showToast('❌ ' + (res.message || 'เกิดข้อผิดพลาด'));
+    if (delBtn) { delBtn.disabled = false; delBtn.innerHTML = '🗑 ยืนยันลบ'; }
+  }
 }
 
 // ==================== APPROVE ====================
@@ -1758,6 +1822,7 @@ window.addEventListener('beforeinstallprompt', e => {
   _deferredInstallPrompt = e;
   const btn = document.getElementById('installBtn');
   if (btn) btn.style.display = 'flex';
+  console.log('PWA: beforeinstallprompt fired ✅');
 });
 
 window.addEventListener('appinstalled', () => {
@@ -1769,7 +1834,7 @@ window.addEventListener('appinstalled', () => {
 
 async function installPWA() {
   if (!_deferredInstallPrompt) {
-    showToast('ℹ️ เปิดในบราวเซอร์ Chrome แล้วลองใหม่');
+    showToast('ℹ️ เปิดใน Chrome/Edge แล้วลองใหม่ หรือเพิ่มเข้าหน้าจอหลักจากเมนูบราวเซอร์');
     return;
   }
   _deferredInstallPrompt.prompt();
@@ -1780,26 +1845,35 @@ async function installPWA() {
   if (btn) btn.style.display = 'none';
 }
 
-// สร้าง Web App Manifest แบบ dynamic (ไม่ต้องมีไฟล์แยก)
+// Manifest ใช้ data URI — รองรับ GitHub Pages และ Netlify
 function injectManifest() {
+  const iconSvg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%231a237e'/><text y='360' x='256' text-anchor='middle' font-size='320' font-family='sans-serif'>💻</text></svg>`;
   const manifest = {
     name: 'IT Equipment Loan System',
     short_name: 'IT Loan',
     description: 'ระบบยืมอุปกรณ์ไอที',
     start_url: './',
+    scope: './',
     display: 'standalone',
-    background_color: '#0f1117',
+    background_color: '#1a237e',
     theme_color: '#1a237e',
-    orientation: 'portrait-primary',
+    lang: 'th',
+    orientation: 'any',
+    categories: ['productivity', 'utilities'],
     icons: [
-      { src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231a237e'/><text y='72' x='50' text-anchor='middle' font-size='60'>💻</text></svg>", sizes: '192x192', type: 'image/svg+xml' },
-      { src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231a237e'/><text y='72' x='50' text-anchor='middle' font-size='60'>💻</text></svg>", sizes: '512x512', type: 'image/svg+xml' },
+      { src: 'data:image/svg+xml,' + encodeURIComponent(iconSvg), sizes: '192x192', type: 'image/svg+xml', purpose: 'any maskable' },
+      { src: 'data:image/svg+xml,' + encodeURIComponent(iconSvg), sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' },
+    ],
+    shortcuts: [
+      { name: 'ยืมอุปกรณ์', short_name: 'ยืม', description: 'ยื่นใบขอยืม', url: './#borrow', icons: [{ src: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">📋</text></svg>', sizes: '96x96' }] },
+      { name: 'Dashboard', short_name: 'Dashboard', description: 'หน้าหลัก', url: './#dashboard', icons: [{ src: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">📊</text></svg>', sizes: '96x96' }] },
     ],
   };
-  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
-  const url  = URL.createObjectURL(blob);
+  const json = JSON.stringify(manifest);
+  const dataUri = 'data:application/manifest+json,' + encodeURIComponent(json);
   const link = document.getElementById('pwaManifest');
-  if (link) link.href = url;
+  if (link) link.href = dataUri;
+  console.log('PWA: Manifest injected ✅');
 }
 
 // ==================== KEYBOARD ====================
@@ -1812,27 +1886,29 @@ window.addEventListener('DOMContentLoaded', () => {
   initTheme();
   injectManifest();
   updateGasStatusBar();
-  // Register service worker for PWA offline support
+  // Service Worker สำหรับ PWA offline
   if ('serviceWorker' in navigator) {
-    // inline SW — cache app shell
-    const swCode = `
-const CACHE = 'it-loan-v1';
-const ASSETS = [self.location.href || '/'];
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).catch(()=>{}));
-  self.skipWaiting();
-});
-self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
-  self.clients.claim();
-});
-self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
-  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
-});`;
-    const swBlob = new Blob([swCode], { type: 'application/javascript' });
-    const swUrl  = URL.createObjectURL(swBlob);
-    navigator.serviceWorker.register(swUrl, { scope: './' }).catch(() => {});
+    // ใช้ data URL ไม่ได้สำหรับ SW — ต้องสร้าง SW จาก Blob แล้วลง Origin
+    // แต่ GitHub Pages อนุญาต blob SW ใน same-origin context
+    const swCode = [
+      "const CACHE='it-loan-v2';",
+      "const SHELL=[];",
+      "self.addEventListener('install',e=>{ self.skipWaiting(); });",
+      "self.addEventListener('activate',e=>{ e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(n=>n!==CACHE).map(n=>caches.delete(n))))); self.clients.claim(); });",
+      "self.addEventListener('fetch',e=>{ if(e.request.method!=='GET'||e.request.url.includes('script.google.com'))return;",
+      "e.respondWith(fetch(e.request).then(r=>{ const c=r.clone(); caches.open(CACHE).then(ca=>ca.put(e.request,c)); return r; }).catch(()=>caches.match(e.request))); });",
+    ].join('\n');
+    try {
+      const swBlob = new Blob([swCode], { type: 'text/javascript' });
+      const swUrl  = URL.createObjectURL(swBlob);
+      navigator.serviceWorker.register(swUrl).then(reg => {
+        console.log('SW registered ✅', reg.scope);
+      }).catch(err => {
+        console.log('SW registration failed (ok on file://):', err.message);
+      });
+    } catch(e) {
+      console.log('SW not supported:', e.message);
+    }
   }
 });
 </script>
