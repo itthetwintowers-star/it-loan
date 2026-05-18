@@ -1,0 +1,1840 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>IT Equipment Loan System</title>
+<meta name="description" content="ระบบยืมอุปกรณ์ไอที">
+<meta name="theme-color" id="themeColorMeta" content="#1a237e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IT Loan">
+<link rel="manifest" id="pwaManifest" href="">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Kanit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ===== THEME VARIABLES ===== */
+  :root {
+    --primary: #1a237e; --primary-light: #283593;
+    --accent: #00bcd4; --accent2: #ff6f00;
+    --success: #00897b; --danger: #c62828; --warn: #f57f17;
+    --bg: #f0f4f8; --card: #ffffff;
+    --text: #1a1a2e; --text2: #546e7a; --border: #e0e7ef;
+    --sidebar-w: 240px; --header-h: 60px;
+    --radius: 12px;
+    --shadow: 0 2px 16px rgba(26,35,126,0.10);
+    --shadow-lg: 0 8px 32px rgba(26,35,126,0.16);
+    --overlay: rgba(0,0,0,0.45);
+    --input-bg: #fafbfd;
+    --cal-cell-bg: #fff;
+  }
+  [data-theme="dark"] {
+    --primary: #5c6bc0; --primary-light: #7986cb;
+    --accent: #00bcd4;
+    --bg: #0f1117; --card: #1a1d27;
+    --text: #e8eaf6; --text2: #90a4ae; --border: #2a2d3a;
+    --shadow: 0 2px 16px rgba(0,0,0,0.4);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+    --overlay: rgba(0,0,0,0.65);
+    --input-bg: #22253a;
+    --cal-cell-bg: #1e2130;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: 'Sarabun', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; transition: background 0.3s, color 0.3s; }
+
+  /* ===== LOGIN ===== */
+  #loginPage {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #1a237e 0%, #0d47a1 40%, #00bcd4 100%);
+    display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden; padding: 16px;
+  }
+  [data-theme="dark"] #loginPage {
+    background: linear-gradient(135deg, #0d1033 0%, #1a237e 60%, #006064 100%);
+  }
+  #loginPage::before { content:''; position:absolute; width:600px; height:600px; border-radius:50%; background:rgba(255,255,255,0.05); top:-150px; right:-150px; }
+  #loginPage::after  { content:''; position:absolute; width:400px; height:400px; border-radius:50%; background:rgba(255,255,255,0.04); bottom:-100px; left:-100px; }
+  .login-card {
+    background: var(--card); border-radius: 20px; padding: 40px 36px 36px;
+    width: 100%; max-width: 400px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.25);
+    position: relative; z-index: 1;
+    animation: slideUp 0.5s cubic-bezier(.22,.61,.36,1);
+  }
+  @keyframes slideUp { from { opacity:0; transform:translateY(32px); } to { opacity:1; transform:none; } }
+  .login-logo { text-align:center; margin-bottom:28px; }
+  .login-logo .icon { font-size:48px; margin-bottom:8px; display:block; }
+  .login-logo h1 { font-family:'Kanit',sans-serif; font-size:1.4rem; font-weight:700; color:var(--primary); }
+  .login-logo p { font-size:0.85rem; color:var(--text2); }
+
+  /* ===== FORMS ===== */
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display:block; font-size:0.85rem; font-weight:600; color:var(--text2); margin-bottom:6px; }
+  .form-group input, .form-group select, .form-group textarea {
+    width:100%; padding:11px 14px; border:1.5px solid var(--border);
+    border-radius:8px; font-family:'Sarabun',sans-serif; font-size:0.95rem;
+    transition:border 0.2s,box-shadow 0.2s; background:var(--input-bg); color:var(--text);
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,188,212,0.15); background:var(--card);
+  }
+
+  /* ===== BUTTONS ===== */
+  .btn {
+    display:inline-flex; align-items:center; gap:7px;
+    padding:10px 20px; border-radius:8px; border:none;
+    font-family:'Sarabun',sans-serif; font-size:0.95rem; font-weight:600;
+    cursor:pointer; transition:all 0.18s; text-decoration:none; white-space:nowrap;
+  }
+  .btn-primary { background:var(--primary); color:#fff; }
+  .btn-primary:hover { background:var(--primary-light); transform:translateY(-1px); box-shadow:0 4px 12px rgba(26,35,126,0.3); }
+  .btn-accent  { background:var(--accent); color:#fff; }
+  .btn-accent:hover  { background:#00acc1; transform:translateY(-1px); }
+  .btn-success { background:var(--success); color:#fff; }
+  .btn-success:hover { background:#00796b; }
+  .btn-danger  { background:var(--danger); color:#fff; }
+  .btn-danger:hover  { background:#b71c1c; }
+  .btn-warn    { background:var(--warn); color:#fff; }
+  .btn-warn:hover    { background:#e65100; }
+  .btn-ghost   { background:transparent; color:var(--text2); border:1.5px solid var(--border); }
+  .btn-ghost:hover   { background:var(--bg); color:var(--text); }
+  .btn-full    { width:100%; justify-content:center; padding:12px; font-size:1rem; }
+  .btn-sm      { padding:6px 14px; font-size:0.82rem; border-radius:6px; }
+  .btn-icon    { width:38px; height:38px; padding:0; justify-content:center; border-radius:10px; font-size:1.1rem; }
+
+  /* ===== SIDEBAR OVERLAY (mobile) ===== */
+  #sidebarOverlay {
+    display:none; position:fixed; inset:0; background:var(--overlay); z-index:90;
+  }
+  #sidebarOverlay.open { display:block; }
+
+  /* ===== LAYOUT ===== */
+  #app { display:none; min-height:100vh; }
+  #app.visible { display:flex; }
+  .sidebar {
+    width:var(--sidebar-w); background:var(--primary);
+    display:flex; flex-direction:column;
+    position:fixed; top:0; left:0; bottom:0; z-index:100;
+    transition:transform 0.28s cubic-bezier(.4,0,.2,1), box-shadow 0.28s;
+    will-change:transform;
+  }
+  .sidebar-logo {
+    padding:20px 16px 16px; border-bottom:1px solid rgba(255,255,255,0.1);
+    display:flex; align-items:center; gap:10px;
+  }
+  .sidebar-logo .logo-icon { font-size:28px; }
+  .sidebar-logo .logo-text h2 { font-family:'Kanit',sans-serif; font-size:1rem; color:#fff; font-weight:700; line-height:1.2; }
+  .sidebar-logo .logo-text p  { font-size:0.72rem; color:rgba(255,255,255,0.55); }
+  .sidebar-user {
+    padding:14px 16px; border-bottom:1px solid rgba(255,255,255,0.1);
+    display:flex; align-items:center; gap:10px;
+  }
+  .user-avatar {
+    width:36px; height:36px; border-radius:50%;
+    background:var(--accent); display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:0.85rem; color:#fff; flex-shrink:0;
+  }
+  .user-info .name { font-size:0.88rem; font-weight:600; color:#fff; }
+  .user-info .role { font-size:0.72rem; color:rgba(255,255,255,0.55); }
+  .nav-menu { flex:1; padding:12px 0; overflow-y:auto; }
+  .nav-item {
+    display:flex; align-items:center; gap:11px;
+    padding:11px 20px; cursor:pointer; transition:all 0.18s;
+    border-left:3px solid transparent; color:rgba(255,255,255,0.7);
+    font-size:0.9rem; font-weight:500;
+  }
+  .nav-item:hover  { background:rgba(255,255,255,0.08); color:#fff; }
+  .nav-item.active { background:rgba(0,188,212,0.18); color:#fff; border-left-color:var(--accent); }
+  .nav-item .nav-icon { font-size:1.1rem; width:22px; text-align:center; }
+  .sidebar-footer { padding:16px; border-top:1px solid rgba(255,255,255,0.1); }
+
+  /* ===== MAIN ===== */
+  .main-content { margin-left:var(--sidebar-w); flex:1; display:flex; flex-direction:column; min-height:100vh; }
+  .topbar {
+    height:var(--header-h); background:var(--card); border-bottom:1px solid var(--border);
+    display:flex; align-items:center; padding:0 20px;
+    position:sticky; top:0; z-index:50;
+    box-shadow:0 1px 4px rgba(0,0,0,0.06);
+    gap:12px;
+  }
+  .topbar-menu-btn {
+    display:none; background:none; border:none; cursor:pointer;
+    font-size:1.4rem; color:var(--text2); padding:4px; border-radius:6px; flex-shrink:0;
+  }
+  .topbar-title { font-family:'Kanit',sans-serif; font-size:1.05rem; font-weight:600; color:var(--primary); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .topbar-controls { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+  .page-content { padding:20px; flex:1; }
+
+  /* ===== DARK MODE TOGGLE ===== */
+  .dark-toggle {
+    width:44px; height:24px; border-radius:12px; border:none; cursor:pointer;
+    background:var(--border); position:relative; transition:background 0.3s; flex-shrink:0;
+    display:flex; align-items:center;
+  }
+  .dark-toggle::after {
+    content:''; position:absolute; left:3px;
+    width:18px; height:18px; border-radius:50%; background:#fff;
+    transition:transform 0.3s, background 0.3s;
+    box-shadow:0 1px 4px rgba(0,0,0,0.2);
+  }
+  [data-theme="dark"] .dark-toggle { background:var(--accent); }
+  [data-theme="dark"] .dark-toggle::after { transform:translateX(20px); }
+  .dark-toggle-wrap { display:flex; align-items:center; gap:6px; font-size:0.8rem; color:var(--text2); }
+
+  /* ===== INSTALL PWA BUTTON ===== */
+  #installBtn {
+    display:none; /* shown when beforeinstallprompt fires */
+  }
+
+  /* ===== CARDS ===== */
+  .card { background:var(--card); border-radius:var(--radius); padding:20px; box-shadow:var(--shadow); margin-bottom:20px; }
+  .card-title { font-family:'Kanit',sans-serif; font-size:1rem; font-weight:600; color:var(--primary); margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+  .stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:20px; }
+  .stat-card {
+    background:var(--card); border-radius:var(--radius); padding:18px 16px;
+    box-shadow:var(--shadow); display:flex; align-items:center; gap:14px;
+    border-left:4px solid var(--accent); transition:transform 0.18s,box-shadow 0.18s;
+  }
+  .stat-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-lg); }
+  .stat-card.s1 { border-left-color:#1a237e; }
+  .stat-card.s2 { border-left-color:#00bcd4; }
+  .stat-card.s3 { border-left-color:#ff6f00; }
+  .stat-card.s4 { border-left-color:#00897b; }
+  [data-theme="dark"] .stat-card.s1 { border-left-color:#7986cb; }
+  .stat-icon { font-size:2rem; flex-shrink:0; }
+  .stat-val   { font-family:'Kanit',sans-serif; font-size:1.6rem; font-weight:700; color:var(--text); line-height:1; }
+  .stat-label { font-size:0.8rem; color:var(--text2); margin-top:2px; }
+
+  /* ===== TABLE ===== */
+  .table-wrap { overflow-x:auto; border-radius:8px; -webkit-overflow-scrolling:touch; }
+  table { width:100%; border-collapse:collapse; font-size:0.88rem; }
+  thead tr { background:var(--bg); }
+  thead th { padding:11px 14px; text-align:left; font-weight:600; color:var(--text2); font-size:0.8rem; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; }
+  tbody tr { border-bottom:1px solid var(--border); transition:background 0.12s; }
+  tbody tr:hover { background:var(--bg); }
+  tbody td { padding:11px 14px; vertical-align:middle; }
+  tbody tr:last-child { border-bottom:none; }
+
+  /* ===== BADGE ===== */
+  .badge { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:20px; font-size:0.75rem; font-weight:600; }
+  .badge-success { background:#e8f5e9; color:#2e7d32; }
+  .badge-danger  { background:#ffebee; color:#c62828; }
+  .badge-warn    { background:#fff8e1; color:#f57f17; }
+  .badge-info    { background:#e3f2fd; color:#1565c0; }
+  .badge-gray    { background:#eceff1; color:#546e7a; }
+  .badge-accent  { background:#e0f7fa; color:#006064; }
+  [data-theme="dark"] .badge-success { background:#1b5e2040; color:#69f0ae; }
+  [data-theme="dark"] .badge-danger  { background:#b71c1c40; color:#ef9a9a; }
+  [data-theme="dark"] .badge-warn    { background:#e65100' '40; color:#ffcc02; }
+  [data-theme="dark"] .badge-info    { background:#0d47a140; color:#82b1ff; }
+  [data-theme="dark"] .badge-gray    { background:#37474f40; color:#b0bec5; }
+  [data-theme="dark"] .badge-accent  { background:#006064' '40; color:#80deea; }
+
+  /* ===== MODAL ===== */
+  .modal-overlay {
+    position:fixed; inset:0; background:var(--overlay);
+    display:none; align-items:center; justify-content:center; z-index:200;
+    backdrop-filter:blur(3px); padding:16px;
+  }
+  .modal-overlay.open { display:flex; }
+  .modal {
+    background:var(--card); border-radius:16px; padding:24px;
+    width:100%; max-width:520px; max-height:90vh; overflow-y:auto;
+    box-shadow:0 24px 64px rgba(0,0,0,0.3);
+    animation:modalIn 0.22s ease;
+  }
+  @keyframes modalIn { from { opacity:0; transform:scale(0.96); } to { opacity:1; transform:none; } }
+  .modal-title { font-family:'Kanit',sans-serif; font-size:1.1rem; font-weight:700; color:var(--primary); margin-bottom:20px; display:flex; align-items:center; gap:8px; }
+  .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:24px; flex-wrap:wrap; }
+
+  /* ===== CALENDAR ===== */
+  .cal-grid   { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+  .cal-header { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-bottom:4px; }
+  .cal-day-name { text-align:center; font-size:0.75rem; font-weight:700; color:var(--text2); padding:5px 0; }
+  .cal-cell {
+    border:1.5px solid var(--border); border-radius:8px; min-height:66px;
+    padding:5px; font-size:0.78rem; background:var(--cal-cell-bg); cursor:pointer;
+    transition:all 0.15s; position:relative;
+  }
+  .cal-cell:hover { border-color:var(--accent); background:var(--bg); }
+  .cal-cell.today { border-color:var(--primary); background:var(--bg); }
+  .cal-cell.other-month { opacity:0.4; }
+  .cal-num { font-weight:600; color:var(--text); display:block; }
+  .cal-cell.today .cal-num { color:var(--primary); }
+  .cal-event { background:var(--accent); color:#fff; border-radius:4px; padding:1px 4px; font-size:0.68rem; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cal-event-pending { background:var(--warn); }
+  .cal-nav { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+  .cal-nav h3 { font-family:'Kanit',sans-serif; font-size:1rem; font-weight:600; flex:1; text-align:center; color:var(--text); }
+  .cal-btn { background:none; border:1.5px solid var(--border); border-radius:8px; padding:5px 11px; cursor:pointer; font-size:1rem; transition:all 0.15s; color:var(--text); }
+  .cal-btn:hover { background:var(--primary); color:#fff; border-color:var(--primary); }
+
+  /* ===== DEPT SELECT ===== */
+  .dept-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; margin-bottom:16px; }
+  .dept-btn {
+    padding:12px 8px; border:2px solid var(--border); border-radius:10px;
+    background:var(--card); cursor:pointer; text-align:center;
+    font-family:'Sarabun',sans-serif; font-size:0.82rem; font-weight:600; color:var(--text);
+    transition:all 0.15s;
+  }
+  .dept-btn:hover { border-color:var(--accent); color:var(--accent); transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,188,212,0.15); }
+  .dept-btn.selected { border-color:var(--primary); background:var(--primary); color:#fff; }
+  .dept-icon { font-size:1.4rem; display:block; margin-bottom:6px; }
+
+  /* ===== TOAST ===== */
+  #toast {
+    position:fixed; bottom:24px; right:20px; z-index:999;
+    background:#1a1a2e; color:#fff; padding:12px 20px;
+    border-radius:10px; font-size:0.9rem; font-weight:500; max-width:320px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.25);
+    opacity:0; transform:translateY(12px);
+    transition:all 0.25s; pointer-events:none;
+  }
+  [data-theme="dark"] #toast { background:var(--card); border:1px solid var(--border); }
+  #toast.show { opacity:1; transform:none; }
+
+  /* ===== MISC ===== */
+  .loading-spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,0.4); border-top-color:#fff; border-radius:50%; animation:spin 0.6s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .empty-state { text-align:center; padding:40px 20px; color:var(--text2); }
+  .empty-state .empty-icon { font-size:3rem; margin-bottom:12px; }
+  .row-actions { display:flex; gap:6px; flex-wrap:wrap; }
+  .section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:10px; }
+  .section-header h2 { font-family:'Kanit',sans-serif; font-size:1.1rem; font-weight:700; color:var(--primary); }
+  .filters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
+  .filters input, .filters select { padding:8px 12px; border:1.5px solid var(--border); border-radius:8px; font-family:'Sarabun',sans-serif; font-size:0.88rem; background:var(--input-bg); color:var(--text); }
+  .filters input:focus, .filters select:focus { outline:none; border-color:var(--accent); }
+  hr { border:none; border-top:1px solid var(--border); margin:16px 0; }
+  .text-sm { font-size:0.82rem; }
+  .text-muted { color:var(--text2); }
+  .form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .tag { display:inline-block; background:#e8eaf6; color:#3949ab; border-radius:6px; padding:2px 8px; font-size:0.75rem; font-weight:600; margin-right:4px; }
+  [data-theme="dark"] .tag { background:#3949ab40; color:#9fa8da; }
+  code { background:var(--bg); padding:2px 6px; border-radius:4px; font-size:0.85rem; }
+
+  /* ===== MOBILE ===== */
+  @media (max-width: 768px) {
+    .sidebar {
+      transform: translateX(-100%);
+      box-shadow: none;
+    }
+    .sidebar.open {
+      transform: translateX(0);
+      box-shadow: 4px 0 24px rgba(0,0,0,0.25);
+    }
+    .main-content { margin-left: 0; }
+    .topbar-menu-btn { display: flex; }
+    .form-row { grid-template-columns: 1fr; }
+    .stat-grid { grid-template-columns: 1fr 1fr; gap:10px; }
+    .page-content { padding: 14px; }
+    .topbar { padding: 0 14px; }
+    .dept-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap:8px; }
+    .cal-cell { min-height: 48px; padding: 4px 3px; }
+    .cal-num { font-size: 0.75rem; }
+    .cal-event { font-size: 0.62rem; padding: 1px 3px; }
+    .modal-actions { justify-content: stretch; }
+    .modal-actions .btn { flex: 1; justify-content: center; }
+    .filters { gap: 8px; }
+    .filters input, .filters select { flex: 1; min-width: 120px; }
+    #toast { left: 16px; right: 16px; bottom: 16px; max-width: 100%; }
+    .card { padding: 14px; }
+  }
+  @media (max-width: 480px) {
+    .stat-grid { grid-template-columns: 1fr 1fr; }
+    .stat-val { font-size: 1.3rem; }
+    .login-card { padding: 32px 20px 28px; }
+    .section-header { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN PAGE ===== -->
+<div id="loginPage">
+  <div class="login-card">
+    <div class="login-logo">
+      <span class="icon">💻</span>
+      <h1>ระบบยืมอุปกรณ์ IT</h1>
+      <p>IT Equipment Loan Management System</p>
+    </div>
+    <div id="deptSelectSection" style="display:none">
+      <p style="font-size:0.85rem;color:var(--text2);margin-bottom:12px;font-weight:600;">เลือกแผนก / Select Department</p>
+      <div class="dept-grid" id="deptGrid"></div>
+      <button class="btn btn-ghost" onclick="showLoginForm()" style="margin-top:8px;">← กลับ</button>
+    </div>
+    <div id="loginForm">
+      <div class="form-group">
+        <label>ชื่อผู้ใช้ (Username)</label>
+        <input type="text" id="loginUser" placeholder="admin / user / it" value="">
+      </div>
+      <div class="form-group">
+        <label>รหัสผ่าน (Password)</label>
+        <input type="password" id="loginPass" placeholder="••••" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <label style="font-size:0.85rem;font-weight:600;color:var(--text2)">🔗 Google Apps Script URL</label>
+          <button onclick="toggleGasInput()" style="font-size:0.75rem;color:var(--accent);background:none;border:none;cursor:pointer;font-family:Sarabun,sans-serif" id="gasToggleBtn">ตั้งค่า</button>
+        </div>
+        <div id="gasInputWrap" style="display:none">
+          <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/..." style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:Sarabun,sans-serif;font-size:0.85rem;background:#fafbfd;color:var(--text);margin-bottom:6px">
+          <div style="display:flex;gap:6px">
+            <button onclick="saveGasUrl()" class="btn btn-accent btn-sm" style="flex:1;justify-content:center">💾 บันทึก URL</button>
+            <button onclick="testGasUrl()" class="btn btn-ghost btn-sm" style="flex:1;justify-content:center" id="testGasBtn">🔍 ทดสอบ</button>
+          </div>
+          <div id="gasTestResult" style="font-size:0.78rem;margin-top:6px;display:none"></div>
+        </div>
+        <div id="gasStatusBar" style="font-size:0.78rem;color:var(--text2)"></div>
+      </div>
+      <div id="loginErr" style="color:#c62828;font-size:0.83rem;margin-bottom:10px;display:none"></div>
+      <button class="btn btn-primary btn-full" onclick="doLogin()">
+        <span id="loginBtnText">เข้าสู่ระบบ</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div id="app">
+  <!-- Sidebar Overlay (mobile) -->
+  <div id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-icon">💻</span>
+      <div class="logo-text">
+        <h2>IT Equipment</h2>
+        <p>Loan System</p>
+      </div>
+    </div>
+    <div class="sidebar-user">
+      <div class="user-avatar" id="userAvatar">A</div>
+      <div class="user-info">
+        <div class="name" id="userNameDisplay">Admin</div>
+        <div class="role" id="userRoleDisplay">ผู้ดูแลระบบ</div>
+      </div>
+    </div>
+    <div class="nav-menu" id="navMenu"></div>
+    <div class="sidebar-footer">
+      <button class="btn btn-ghost" style="width:100%;color:rgba(255,255,255,0.7);border-color:rgba(255,255,255,0.2);" onclick="logout()">🚪 ออกจากระบบ</button>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main-content">
+    <div class="topbar">
+      <button class="topbar-menu-btn" onclick="toggleSidebar()" aria-label="เมนู">☰</button>
+      <div class="topbar-title" id="topbarTitle">Dashboard</div>
+      <div class="topbar-controls">
+        <div id="topbarActions"></div>
+        <button id="installBtn" class="btn btn-accent btn-sm" onclick="installPWA()" title="ติดตั้ง App">📲 ติดตั้ง</button>
+        <button class="dark-toggle" onclick="toggleDark()" title="Dark Mode" id="darkToggle" aria-label="สลับ Dark Mode"></button>
+      </div>
+    </div>
+    <div class="page-content" id="pageContent"></div>
+  </div>
+</div>
+
+<!-- ===== MODAL ===== -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalIfBG(event)">
+  <div class="modal" id="modal">
+    <div class="modal-title" id="modalTitle"></div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ==================== CONFIG ====================
+const SHEET_ID = '1KjjWgA9YEAuoykD2p8Xr9_UYP7gfvEJkEUL2hnVx20U';
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbydtWX0j4UBFGdHbtV-J4gJJF9UzJj8kFqCvM9yqcVRFv8ABh7mP3TxV1lzz0bqrol6/exec';
+let GAS_URL = localStorage.getItem('gas_url') || DEFAULT_GAS_URL;
+
+const DEPARTMENTS = [
+  { id: 'accounting', name: 'Accounting', icon: '💰' },
+  { id: 'admin', name: 'Admin & General', icon: '🏢' },
+  { id: 'engineering', name: 'Engineering', icon: '⚙️' },
+  { id: 'fb_kitchen', name: 'F&B Kitchen', icon: '🍳' },
+  { id: 'fb_service', name: 'F&B Service', icon: '🍽️' },
+  { id: 'front_office', name: 'Front Office', icon: '🛎️' },
+  { id: 'housekeeping', name: 'Housekeeping & Lau', icon: '🧹' },
+  { id: 'personnel', name: 'Personnel & Training', icon: '👥' },
+  { id: 'sales', name: 'Sales & Market / MA', icon: '📊' },
+  { id: 'security', name: 'Security', icon: '🔒' },
+  { id: 'it', name: 'IT Dep.', icon: '💻' },
+  { id: 'management', name: 'Management', icon: '👔' },
+];
+
+// ==================== STATE ====================
+let state = {
+  user: null,
+  equipment: [],
+  users: [],
+  requests: [],
+  loading: false,
+  calMonth: new Date().getMonth(),
+  calYear: new Date().getFullYear(),
+};
+
+// ==================== LOCAL FALLBACK DATA (ใช้เฉพาะเมื่อ GAS ไม่ตอบสนอง) ====================
+// ไม่มี demo data — ข้อมูลทั้งหมดมาจาก Google Sheet เท่านั้น
+
+// ==================== GOOGLE APPS SCRIPT API ====================
+// GAS รับผ่าน GET + payload เป็น base64 JSON เพื่อหลีก CORS preflight
+async function gasRequest(action, payload = {}) {
+  if (!GAS_URL) return simulateGAS(action, payload);
+  try {
+    const body = JSON.stringify({ action, ...payload });
+    // ใช้ GET + query param เพื่อหลีก CORS issue
+    const url = GAS_URL + '?payload=' + encodeURIComponent(body);
+    const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    return json;
+  } catch (err) {
+    console.warn('GAS fetch failed, using demo mode:', err.message);
+    showToast('⚠️ ไม่สามารถเชื่อม Google Sheet ได้: ' + err.message);
+    return simulateGAS(action, payload);
+  }
+}
+
+function simulateGAS(action, payload) {
+  // Fallback เมื่อ GAS ไม่ตอบสนอง — ทำงานกับ state ใน memory
+  switch (action) {
+    case 'login':
+      return { success: false, message: 'ไม่สามารถเชื่อม Google Sheet ได้ กรุณาตรวจสอบ GAS URL' };
+    case 'getEquipment':
+      return { success: true, data: state.equipment };
+    case 'addEquipment': {
+      const eq = { id: 'AST-' + Date.now(), ...payload.data };
+      state.equipment.push(eq);
+      return { success: true, data: eq };
+    }
+    case 'updateEquipment': {
+      const i = state.equipment.findIndex(e => String(e.id||'').trim() === String(payload.id).trim());
+      if (i >= 0) state.equipment[i] = { ...state.equipment[i], ...payload.data };
+      return { success: true };
+    }
+    case 'deleteEquipment': {
+      state.equipment = state.equipment.filter(e => String(e.id||'').trim() !== String(payload.id).trim());
+      return { success: true };
+    }
+    case 'getRequests':
+      return { success: true, data: state.requests };
+    case 'addRequest': {
+      const req = { id: 'REQ-' + Date.now(), ...payload.data, status: 'รออนุมัติ', handledBy: '' };
+      state.requests.push(req);
+      return { success: true, data: req };
+    }
+    case 'updateRequest': {
+      const i = state.requests.findIndex(r => String(r.id||'').trim() === String(payload.id).trim());
+      if (i >= 0) state.requests[i] = { ...state.requests[i], ...payload.data };
+      return { success: true };
+    }
+    case 'getUsers':
+      return { success: true, data: state.users.map(u => ({ ...u, password: '****' })) };
+    case 'addUser': {
+      state.users.push(payload.data);
+      return { success: true };
+    }
+    case 'deleteUser': {
+      state.users = state.users.filter(u => u.username !== payload.username);
+      return { success: true };
+    }
+    default:
+      return { success: false, message: 'Unknown action: ' + action };
+  }
+}
+
+// ==================== INIT DATA (ล้าง demo — ใช้ข้อมูลจาก Sheet เท่านั้น) ====================
+function initData() {
+  state.equipment = [];
+  state.users = [];
+  state.requests = [];
+}
+
+// ==================== SYNC หลัง login ====================
+async function syncAllData() {
+  const [eqRes, reqRes] = await Promise.all([
+    gasRequest('getEquipment'),
+    gasRequest('getRequests'),
+  ]);
+  if (eqRes.success)  state.equipment = eqRes.data  || [];
+  if (reqRes.success) state.requests  = reqRes.data  || [];
+}
+
+// ==================== GAS URL HELPERS ====================
+function toggleGasInput() {
+  const wrap = document.getElementById('gasInputWrap');
+  const btn = document.getElementById('gasToggleBtn');
+  const input = document.getElementById('gasUrlInput');
+  if (wrap.style.display === 'none') {
+    wrap.style.display = '';
+    input.value = GAS_URL;
+    btn.textContent = 'ซ่อน';
+    input.focus();
+  } else {
+    wrap.style.display = 'none';
+    btn.textContent = 'ตั้งค่า';
+  }
+}
+
+function saveGasUrl() {
+  const val = document.getElementById('gasUrlInput').value.trim();
+  GAS_URL = val;
+  localStorage.setItem('gas_url', val);
+  updateGasStatusBar();
+  if (val) showToast('✅ บันทึก GAS URL แล้ว');
+  else showToast('🗑 ล้าง GAS URL แล้ว (Demo mode)');
+}
+
+async function testGasUrl() {
+  const val = document.getElementById('gasUrlInput').value.trim();
+  const resEl = document.getElementById('gasTestResult');
+  const btn = document.getElementById('testGasBtn');
+  if (!val) { resEl.style.display=''; resEl.style.color='var(--danger)'; resEl.textContent='⚠️ กรุณากรอก URL ก่อน'; return; }
+  btn.textContent = '⏳ กำลังทดสอบ...'; btn.disabled = true;
+  resEl.style.display=''; resEl.style.color='var(--text2)'; resEl.textContent='กำลังเชื่อมต่อ...';
+  try {
+    const url = val + '?payload=' + encodeURIComponent(JSON.stringify({ action: 'ping' }));
+    const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+    if (res.ok) {
+      resEl.style.color='var(--success)'; resEl.textContent='✅ เชื่อมต่อสำเร็จ! GAS ทำงานปกติ';
+    } else {
+      resEl.style.color='var(--danger)'; resEl.textContent='❌ HTTP ' + res.status + ' - ตรวจสอบ URL และ Deploy settings';
+    }
+  } catch(e) {
+    resEl.style.color='var(--danger)'; resEl.textContent='❌ เชื่อมต่อไม่ได้: ' + e.message;
+  }
+  btn.textContent = '🔍 ทดสอบ'; btn.disabled = false;
+}
+
+function updateGasStatusBar() {
+  const el = document.getElementById('gasStatusBar');
+  if (!el) return;
+  if (GAS_URL) {
+    el.innerHTML = `<span style="color:var(--success)">✅ เชื่อมกับ Google Sheet แล้ว</span>`;
+  } else {
+    el.innerHTML = `<span style="color:var(--warn)">⚠️ Demo mode — ข้อมูลไม่บันทึกจริง</span>`;
+  }
+}
+
+// ==================== LOGIN ====================
+function showDeptSelect() {
+  const grid = document.getElementById('deptGrid');
+  grid.innerHTML = DEPARTMENTS.map(d =>
+    `<button class="dept-btn" onclick="selectDeptLogin('${d.id}')">
+      <span class="dept-icon">${d.icon}</span>${d.name}
+    </button>`
+  ).join('');
+  document.getElementById('deptSelectSection').style.display = '';
+  document.getElementById('loginForm').style.display = 'none';
+}
+function showLoginForm() {
+  document.getElementById('deptSelectSection').style.display = 'none';
+  document.getElementById('loginForm').style.display = '';
+}
+function selectDeptLogin(deptId) {
+  document.querySelectorAll('.dept-btn').forEach(b => b.classList.remove('selected'));
+  event.target.closest('.dept-btn').classList.add('selected');
+}
+
+async function doLogin() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value.trim();
+  const errEl = document.getElementById('loginErr');
+  errEl.style.display = 'none';
+  if (!username || !password) { errEl.textContent = 'กรุณากรอกข้อมูลให้ครบ'; errEl.style.display = ''; return; }
+  const btnText = document.getElementById('loginBtnText');
+  btnText.innerHTML = '<span class="loading-spinner"></span> กำลังตรวจสอบ...';
+  const res = await gasRequest('login', { username, password });
+  if (!res.success) {
+    btnText.textContent = 'เข้าสู่ระบบ';
+    errEl.textContent = res.message || 'เข้าสู่ระบบไม่สำเร็จ';
+    errEl.style.display = '';
+    return;
+  }
+  state.user = res.user;
+  initData();
+  // ซิงค์ข้อมูลจาก Google Sheet ก่อนเข้าแอป
+  btnText.innerHTML = '<span class="loading-spinner"></span> กำลังโหลดข้อมูล...';
+  await syncAllData();
+  btnText.textContent = 'เข้าสู่ระบบ';
+  startApp();
+}
+
+// ==================== APP START ====================
+function startApp() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+  const u = state.user;
+  document.getElementById('userAvatar').textContent = u.username[0].toUpperCase();
+  document.getElementById('userNameDisplay').textContent = u.username;
+  document.getElementById('userRoleDisplay').textContent =
+    u.role === 'admin' ? 'ผู้ดูแลระบบ' : u.role === 'it' ? 'IT Department' : 'ผู้ใช้งาน';
+  buildNav();
+  navigate('dashboard');
+  // แสดง toast ยืนยันการซิงค์
+  showToast(`✅ ซิงค์ข้อมูลแล้ว: ${state.equipment.length} อุปกรณ์, ${state.requests.length} รายการยืม`);
+}
+
+function logout() {
+  state.user = null;
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('loginPage').style.display = '';
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+}
+
+// ==================== NAV ====================
+const ALL_PAGES = [
+  { id: 'dashboard', label: 'Dashboard', icon: '📊', roles: ['admin', 'it', 'user'] },
+  { id: 'borrow', label: 'ยืมอุปกรณ์', icon: '📋', roles: ['admin', 'it', 'user'] },
+  { id: 'history', label: 'ประวัติการยืม', icon: '📜', roles: ['admin', 'it', 'user'] },
+  { id: 'settings', label: 'จัดการอุปกรณ์', icon: '⚙️', roles: ['admin', 'it'] },
+  { id: 'users', label: 'จัดการผู้ใช้', icon: '👥', roles: ['admin'] },
+  { id: 'approve', label: 'อนุมัติการยืม', icon: '✅', roles: ['admin', 'it'] },
+];
+
+function buildNav() {
+  const menu = document.getElementById('navMenu');
+  const role = state.user.role;
+  const pages = ALL_PAGES.filter(p => p.roles.includes(role));
+  menu.innerHTML = pages.map(p =>
+    `<div class="nav-item" id="nav-${p.id}" onclick="navigate('${p.id}')">
+      <span class="nav-icon">${p.icon}</span>${p.label}
+    </div>`
+  ).join('');
+}
+
+function navigate(page) {
+  closeSidebar();
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navEl = document.getElementById('nav-' + page);
+  if (navEl) navEl.classList.add('active');
+  const pg = ALL_PAGES.find(p => p.id === page);
+  document.getElementById('topbarTitle').textContent = pg ? pg.label : page;
+  document.getElementById('topbarActions').innerHTML = '';
+  const content = document.getElementById('pageContent');
+  content.style.opacity = '0';
+  setTimeout(async () => {
+    content.style.opacity = '';
+    content.style.transition = 'opacity 0.2s';
+    switch(page) {
+      case 'dashboard': renderDashboard(); break;
+      case 'borrow': renderBorrow(); break;
+      case 'history': renderHistory(); break;
+      case 'settings': await renderSettings(); break;
+      case 'users': renderUsers(); break;
+      case 'approve': await renderApprove(); break;
+    }
+  }, 80);
+}
+
+// ==================== DASHBOARD ====================
+function renderDashboard() {
+  const total = state.equipment.length;
+  const available = state.equipment.filter(e => e.status === 'ว่าง').length;
+  const borrowed = state.equipment.filter(e => e.status === 'ถูกยืม').length;
+  const pending = state.requests.filter(r => r.status === 'รออนุมัติ').length;
+
+  document.getElementById('pageContent').innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card s1">
+        <span class="stat-icon">💻</span>
+        <div><div class="stat-val">${total}</div><div class="stat-label">อุปกรณ์ทั้งหมด</div></div>
+      </div>
+      <div class="stat-card s2">
+        <span class="stat-icon">✅</span>
+        <div><div class="stat-val">${available}</div><div class="stat-label">พร้อมใช้งาน</div></div>
+      </div>
+      <div class="stat-card s3">
+        <span class="stat-icon">📤</span>
+        <div><div class="stat-val">${borrowed}</div><div class="stat-label">ถูกยืมอยู่</div></div>
+      </div>
+      <div class="stat-card s4">
+        <span class="stat-icon">🕐</span>
+        <div><div class="stat-val">${pending}</div><div class="stat-label">รออนุมัติ</div></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
+      <div class="card">
+        <div class="card-title">📅 ปฏิทินการยืมอุปกรณ์</div>
+        ${renderCalendarHTML()}
+      </div>
+      <div class="card">
+        <div class="card-title">⏳ รายการรออนุมัติ</div>
+        ${(()=>{
+          const pending = state.requests.filter(r=>(r.status||'')==='รออนุมัติ');
+          if(pending.length===0) return '<div class="empty-state"><div class="empty-icon">✅</div><div>ไม่มีรายการรออนุมัติ</div></div>';
+          return pending.map(r=>'<div style="padding:10px 0;border-bottom:1px solid var(--border)">'
+            +'<div style="font-weight:600;font-size:0.88rem">'+(r.requester||'-')+'</div>'
+            +'<div style="font-size:0.8rem;color:var(--text2)">'+(r.equipment||'-')+'</div>'
+            +'<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'
+            +'<span class="badge badge-info">'+(r.dept||'')+'</span>'
+            +'<span class="badge badge-warn">รออนุมัติ</span>'
+            +'</div></div>').join('');
+        })()}
+      </div>
+    </div>
+  `;
+  attachCalendarEvents();
+}
+
+function renderCalendarHTML() {
+  const now = new Date();
+  const year = state.calYear, month = state.calMonth;
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthNames = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  const dayNames = ['อา','จ','อ','พ','พฤ','ศ','ส'];
+
+  // Map events by date — รองรับ lowercase keys จาก GAS
+  const eventMap = {};
+  state.requests
+    .filter(r => { const s = r.status||''; return s === 'อนุมัติ' || s === 'รออนุมัติ'; })
+    .forEach(r => {
+      const rawStart = r.startdate || r.startDate || '';
+      const rawEnd   = r.enddate   || r.endDate   || rawStart;
+      if (!rawStart) return;
+      const dStart = new Date(rawStart);
+      const dEnd   = new Date(rawEnd);
+      if (isNaN(dStart)) return;
+      // ใส่ทุกวันในช่วง start→end
+      const cur = new Date(dStart.getFullYear(), dStart.getMonth(), dStart.getDate());
+      const fin = new Date(dEnd.getFullYear(),   dEnd.getMonth(),   dEnd.getDate());
+      while (cur <= fin) {
+        const key = cur.getFullYear()+'-'+(cur.getMonth()+1)+'-'+cur.getDate();
+        if (!eventMap[key]) eventMap[key] = [];
+        eventMap[key].push(r);
+        cur.setDate(cur.getDate() + 1);
+      }
+    });
+
+  let cells = '';
+  for (let i = 0; i < firstDay; i++) {
+    const prevDate = new Date(year, month, -firstDay + i + 1);
+    cells += '<div class="cal-cell other-month"><span class="cal-num">'+prevDate.getDate()+'</span></div>';
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isToday = now.getDate() === d && now.getMonth() === month && now.getFullYear() === year;
+    const key = year+'-'+(month+1)+'-'+d;
+    const evs = eventMap[key] || [];
+    const evHTML = evs.slice(0,2).map(e => {
+      const isPending = (e.status||'') === 'รออนุมัติ';
+      const nm = (e.equipment||'').split(' ')[0] || '?';
+      const who = e.requester || '?';
+      return '<div class="cal-event'+(isPending?' cal-event-pending':'')+'" title="'+who+': '+(e.equipment||'')+'">'+nm+'</div>';
+    }).join('');
+    const moreHTML = evs.length > 2 ? '<div style="font-size:0.7rem;color:var(--accent);margin-top:2px">+'+(evs.length-2)+' อื่น</div>' : '';
+    cells += '<div class="cal-cell '+(isToday?'today':'')+'" onclick="showDayEvents('+d+')">'
+           + '<span class="cal-num">'+d+'</span>'
+           + evHTML + moreHTML
+           + '</div>';
+  }
+  const remaining = 42 - firstDay - daysInMonth;
+  for (let d = 1; d <= remaining; d++) {
+    cells += '<div class="cal-cell other-month"><span class="cal-num">'+d+'</span></div>';
+  }
+
+  return '<div class="cal-nav">'
+       + '<button class="cal-btn" id="calPrev">◀</button>'
+       + '<h3>'+monthNames[month]+' '+(year+543)+'</h3>'
+       + '<button class="cal-btn" id="calNext">▶</button>'
+       + '</div>'
+       + '<div class="cal-header">'+dayNames.map(n=>'<div class="cal-day-name">'+n+'</div>').join('')+'</div>'
+       + '<div class="cal-grid">'+cells+'</div>';
+}
+
+function attachCalendarEvents() {
+  document.getElementById('calPrev')?.addEventListener('click', () => {
+    state.calMonth--;
+    if (state.calMonth < 0) { state.calMonth = 11; state.calYear--; }
+    renderDashboard();
+  });
+  document.getElementById('calNext')?.addEventListener('click', () => {
+    state.calMonth++;
+    if (state.calMonth > 11) { state.calMonth = 0; state.calYear++; }
+    renderDashboard();
+  });
+}
+
+function showDayEvents(day) {
+  const target = new Date(state.calYear, state.calMonth, day);
+  const evs = state.requests.filter(r => {
+    const rawStart = r.startdate || r.startDate || '';
+    const rawEnd   = r.enddate   || r.endDate   || rawStart;
+    if (!rawStart) return false;
+    const dS = new Date(rawStart); if (isNaN(dS)) return false;
+    const dE = new Date(rawEnd);   if (isNaN(dE)) return false;
+    const s = new Date(dS.getFullYear(), dS.getMonth(), dS.getDate());
+    const e = new Date(dE.getFullYear(), dE.getMonth(), dE.getDate());
+    return target >= s && target <= e;
+  });
+  const title = 'รายการวันที่ '+day+'/'+(state.calMonth+1)+'/'+(state.calYear+543);
+  const body = evs.length === 0
+    ? '<p class="text-muted" style="padding:12px 0">ไม่มีรายการในวันนี้</p>'
+    : evs.map(r => {
+        const start  = r.startdate  || r.startDate  || '-';
+        const end    = r.enddate    || r.endDate    || '-';
+        const status = r.status || '-';
+        return '<div style="padding:12px;border:1.5px solid var(--border);border-radius:8px;margin-bottom:8px">'
+             + '<div style="font-weight:600;margin-bottom:4px">'+(r.requester||'-')
+             + ' <span class="badge badge-info" style="margin-left:6px">'+(r.dept||'')+'</span></div>'
+             + '<div style="font-size:0.85rem;color:var(--text2);margin-bottom:4px">💻 '+(r.equipment||'-')+'</div>'
+             + '<div style="font-size:0.8rem;color:var(--text2);margin-bottom:6px">📅 '+fmtDT(start)+' → '+fmtDT(end)+'</div>'
+             + statusBadge(status)
+             + '</div>';
+      }).join('');
+  openModal('📅 '+title, body + '<div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">ปิด</button></div>');
+}
+
+// ==================== BORROW ====================
+let borrowState = { dept: null };
+
+function renderBorrow() {
+  const nowStr = new Date().toISOString().slice(0,16);
+  document.getElementById('pageContent').innerHTML = `
+    <div class="card">
+      <div class="card-title">📋 ยื่นใบขอยืมอุปกรณ์</div>
+      <div style="margin-bottom:16px">
+        <label style="font-size:0.85rem;font-weight:600;color:var(--text2);display:block;margin-bottom:8px">🏢 เลือกแผนก <span style="color:var(--danger)">*</span></label>
+        <div class="dept-grid" id="borrowDeptGrid"></div>
+      </div>
+      <hr>
+      <div class="form-row">
+        <div class="form-group">
+          <label>👤 ชื่อ-สกุล ผู้ยืม <span style="color:var(--danger)">*</span></label>
+          <input type="text" id="borrowName" placeholder="กรอกชื่อ-สกุล">
+        </div>
+        <div class="form-group">
+          <label>💻 อุปกรณ์ที่ต้องการยืม <span style="color:var(--danger)">*</span></label>
+          <select id="borrowEq">
+            <option value="">-- เลือกอุปกรณ์ --</option>
+            ${state.equipment.filter(e=>(e.status)==='ว่าง').map(e=>{
+              const n=e.name||''; const c=e.category||'';
+              return `<option value="${n}">${n} (${c})</option>`;
+            }).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>📅 วันที่และเวลายืม <span style="color:var(--danger)">*</span></label>
+          <input type="datetime-local" id="borrowStart" value="${nowStr}" onchange="calcDuration()">
+        </div>
+        <div class="form-group">
+          <label>📅 วันที่และเวลาคืน <span style="color:var(--danger)">*</span></label>
+          <input type="datetime-local" id="borrowEnd" value="${nowStr}" onchange="calcDuration()">
+        </div>
+      </div>
+      <div id="durationDisplay" style="background:#f0f7ff;border:1.5px solid #b3d4f5;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:0.88rem;color:var(--primary);display:none">
+        ⏱ ระยะเวลา: <strong id="durationText"></strong>
+      </div>
+      <div class="form-group">
+        <label>📝 หมายเหตุ</label>
+        <textarea id="borrowNote" rows="3" placeholder="รายละเอียดเพิ่มเติม เช่น วัตถุประสงค์การใช้งาน..."></textarea>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button class="btn btn-primary" onclick="submitBorrow()">📤 ส่งใบขอยืม</button>
+        <button class="btn btn-ghost" onclick="resetBorrowForm()">🔄 ล้างข้อมูล</button>
+      </div>
+    </div>
+  `;
+  // Dept grid
+  const grid = document.getElementById('borrowDeptGrid');
+  grid.innerHTML = DEPARTMENTS.map(d =>
+    `<button class="dept-btn ${borrowState.dept === d.id ? 'selected':''}" onclick="selectBorrowDept('${d.id}', this)">
+      <span class="dept-icon">${d.icon}</span>${d.name}
+    </button>`
+  ).join('');
+}
+
+function calcDuration() {
+  const start = document.getElementById('borrowStart').value;
+  const end = document.getElementById('borrowEnd').value;
+  const dispEl = document.getElementById('durationDisplay');
+  const txtEl = document.getElementById('durationText');
+  if (!start || !end) { dispEl.style.display='none'; return; }
+  const ms = new Date(end) - new Date(start);
+  if (ms <= 0) { dispEl.style.display=''; txtEl.textContent = '⚠️ วันที่คืนต้องหลังวันที่ยืม'; return; }
+  const totalMins = Math.floor(ms / 60000);
+  const days = Math.floor(totalMins / 1440);
+  const hours = Math.floor((totalMins % 1440) / 60);
+  const mins = totalMins % 60;
+  let txt = '';
+  if (days > 0) txt += `${days} วัน `;
+  if (hours > 0) txt += `${hours} ชั่วโมง `;
+  if (mins > 0) txt += `${mins} นาที`;
+  dispEl.style.display = '';
+  txtEl.textContent = txt.trim() || '0 นาที';
+}
+
+function selectBorrowDept(id, el) {
+  borrowState.dept = id;
+  document.querySelectorAll('#borrowDeptGrid .dept-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+async function submitBorrow() {
+  const name  = document.getElementById('borrowName').value.trim();
+  const eq    = document.getElementById('borrowEq').value;
+  const start = document.getElementById('borrowStart').value;
+  const end   = document.getElementById('borrowEnd').value;
+  const note  = document.getElementById('borrowNote').value.trim();
+  const dept  = borrowState.dept ? DEPARTMENTS.find(d=>d.id===borrowState.dept)?.name : '';
+
+  if (!name || !eq || !start || !end || !dept) {
+    showToast('⚠️ กรุณากรอกข้อมูลให้ครบ และเลือกแผนก'); return;
+  }
+  if (new Date(end) <= new Date(start)) {
+    showToast('⚠️ วันที่คืนต้องหลังจากวันที่ยืม'); return;
+  }
+
+  // ตรวจสอบช่วงเวลาซ้ำ — อุปกรณ์เดียวกัน ช่วงเวลาทับกัน สถานะ รออนุมัติ/อนุมัติ
+  const newStart = new Date(start);
+  const newEnd   = new Date(end);
+  const conflict = state.requests.find(r => {
+    const rEq     = r.equipment || '';
+    const rStatus = r.status    || '';
+    if (rEq !== eq) return false;
+    if (rStatus === 'คืนแล้ว' || rStatus === 'ปฏิเสธ') return false;
+    const rStart = new Date(r.startdate || r.startDate || '');
+    const rEnd   = new Date(r.enddate   || r.endDate   || '');
+    if (isNaN(rStart) || isNaN(rEnd)) return false;
+    // ทับกันถ้า newStart < rEnd && newEnd > rStart
+    return newStart < rEnd && newEnd > rStart;
+  });
+
+  if (conflict) {
+    const cs = fmtDT(conflict.startdate || conflict.startDate || '');
+    const ce = fmtDT(conflict.enddate   || conflict.endDate   || '');
+    openModal('⚠️ อุปกรณ์ถูกจองแล้ว', `
+      <div style="margin-bottom:16px">
+        <p style="margin-bottom:10px">อุปกรณ์ <strong>${eq}</strong> ถูกจองในช่วงเวลาที่เลือกแล้ว:</p>
+        <div style="background:#fff8e1;border:1.5px solid #ffd54f;border-radius:8px;padding:12px">
+          <div style="font-weight:600">👤 ${conflict.requester||'-'} (${conflict.dept||'-'})</div>
+          <div style="font-size:0.85rem;margin-top:4px;color:var(--text2)">
+            📅 ${cs} → ${ce}
+          </div>
+          <div style="margin-top:6px">${statusBadge(conflict.status||'-')}</div>
+        </div>
+        <p style="margin-top:12px;font-size:0.88rem;color:var(--text2)">กรุณาเลือกอุปกรณ์อื่น หรือเปลี่ยนช่วงเวลายืม</p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">ปิด</button>
+      </div>
+    `);
+    return;
+  }
+
+  const ms        = newEnd - newStart;
+  const totalMins = Math.floor(ms / 60000);
+  const days      = Math.floor(totalMins / 1440);
+  const hours     = Math.floor((totalMins % 1440) / 60);
+
+  const res = await gasRequest('addRequest', { data: {
+    requester: name, dept, equipment: eq,
+    startDate: start, endDate: end, days, hours, note
+  }});
+
+  if (res.success) {
+    showToast('✅ ส่งใบขอยืมสำเร็จ รอการอนุมัติ');
+    // push to local state ทันที (lowercase keys เพื่อให้ตรงกับ GAS)
+    state.requests.push({
+      id: (res.data && res.data.id) || 'REQ-' + Date.now(),
+      requester: name, dept, equipment: eq,
+      startdate: start, enddate: end,
+      days, hours, note, status: 'รออนุมัติ', handledby: ''
+    });
+    borrowState.dept = null;
+    renderBorrow();
+  } else {
+    showToast('❌ เกิดข้อผิดพลาด: ' + (res.message || 'กรุณาลองใหม่'));
+  }
+}
+
+function resetBorrowForm() {
+  borrowState.dept = null;
+  renderBorrow();
+}
+
+// ==================== HISTORY ====================
+function renderHistory() {
+  const role = state.user.role;
+  const reqs = role === 'user'
+    ? state.requests.filter(r => r.requester === state.user.username)
+    : state.requests;
+
+  document.getElementById('pageContent').innerHTML = `
+    <div class="card">
+      <div class="section-header">
+        <h2>📜 ประวัติการยืมอุปกรณ์</h2>
+      </div>
+      <div class="filters">
+        <input type="text" id="histSearch" placeholder="🔍 ค้นหา..." oninput="filterHistory()">
+        <select id="histStatus" onchange="filterHistory()">
+          <option value="">ทุกสถานะ</option>
+          <option value="รออนุมัติ">รออนุมัติ</option>
+          <option value="อนุมัติ">อนุมัติ</option>
+          <option value="คืนแล้ว">คืนแล้ว</option>
+          <option value="ปฏิเสธ">ปฏิเสธ</option>
+        </select>
+        <select id="histDept" onchange="filterHistory()">
+          <option value="">ทุกแผนก</option>
+          ${DEPARTMENTS.map(d=>`<option value="${d.name}">${d.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>รหัส</th><th>ผู้ยืม</th><th>แผนก</th><th>อุปกรณ์</th>
+              <th>วันที่ยืม</th><th>วันที่คืน</th><th>ระยะเวลา</th><th>สถานะ</th>
+              ${role !== 'user' ? '<th>การดำเนินการ</th>' : ''}
+            </tr>
+          </thead>
+          <tbody id="histBody">
+            ${renderHistRows(reqs, role)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function fmtDT(dt) {
+  if (!dt || dt === '-') return '-';
+  try {
+    const d = new Date(dt);
+    if (isNaN(d)) return dt;
+    return d.toLocaleString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch { return dt; }
+}
+
+function renderHistRows(reqs, role) {
+  if (!reqs || reqs.length === 0) return `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text2)">ไม่มีข้อมูล</td></tr>`;
+  return reqs.map(r => {
+    const id = r.id||'-';
+    const req = r.requester||'-';
+    const dept = r.dept||'-';
+    const eq = r.equipment||'-';
+    const start = r.startdate||r.startDate||'-';
+    const end = r.enddate||r.endDate||'-';
+    const days = r.days||0;
+    const hours = r.hours||0;
+    const status = r.status||'-';
+    return `
+    <tr>
+      <td><span class="tag">${id}</span></td>
+      <td style="font-weight:500">${req}</td>
+      <td>${dept}</td>
+      <td>${eq}</td>
+      <td style="font-size:0.82rem;white-space:nowrap">${fmtDT(start)}</td>
+      <td style="font-size:0.82rem;white-space:nowrap">${fmtDT(end)}</td>
+      <td><span class="text-sm">${days?days+'วัน ':''} ${hours?hours+'ชม.':''}</span></td>
+      <td>${statusBadge(status)}</td>
+      ${role !== 'user' ? `<td><div class="row-actions">
+        ${status==='อนุมัติ' ? `<button class="btn btn-success btn-sm" onclick="markReturned('${id}')">✔ คืนแล้ว</button>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="viewRequest('${id}')">👁</button>
+      </div></td>` : `<td><button class="btn btn-ghost btn-sm" onclick="viewRequest('${id}')">👁</button></td>`}
+    </tr>`;
+  }).join('');
+}
+
+function filterHistory() {
+  const s = document.getElementById('histSearch').value.toLowerCase();
+  const st = document.getElementById('histStatus').value;
+  const dept = document.getElementById('histDept').value;
+  const role = state.user.role;
+  let reqs = role === 'user' ? state.requests.filter(r=>(r.requester)===state.user.username) : state.requests;
+  if (s) reqs = reqs.filter(r => JSON.stringify(r).toLowerCase().includes(s));
+  if (st) reqs = reqs.filter(r => (r.status) === st);
+  if (dept) reqs = reqs.filter(r => (r.dept) === dept);
+  document.getElementById('histBody').innerHTML = renderHistRows(reqs, role);
+}
+
+async function markReturned(id) {
+  const res = await gasRequest('updateRequest', { id, data: { status: 'คืนแล้ว', handledBy: state.user.username }});
+  if (res.success) {
+    const req = state.requests.find(r => String(r.id||'').trim() === String(id).trim());
+    if (req) {
+      req.status = 'คืนแล้ว';
+      const eq = state.equipment.find(e => String(e.name||'') === String(req.equipment||''));
+      if (eq) eq.status = 'ว่าง';
+    }
+    showToast('✅ บันทึกการคืนอุปกรณ์แล้ว');
+    renderHistory();
+  } else {
+    showToast('❌ ' + (res.message || 'บันทึกไม่สำเร็จ'));
+  }
+}
+
+function viewRequest(id) {
+  const r = state.requests.find(x => String(x.id||'').trim() === String(id).trim());
+  if (!r) { showToast('⚠️ ไม่พบรายการ'); return; }
+  const req     = r.requester || '-';
+  const dept    = r.dept      || '-';
+  const eq      = r.equipment || '-';
+  const start   = r.startdate || r.startDate || '-';
+  const end     = r.enddate   || r.endDate   || '-';
+  const days    = r.days  || 0;
+  const hours   = r.hours || 0;
+  const status  = r.status || '-';
+  const handled = r.handledby || r.handledBy || '';
+  const note    = r.note || '';
+  openModal(`📋 รายละเอียดการยืม`,`
+    <div style="display:grid;gap:12px">
+      <div><span class="tag">${id}</span> ${statusBadge(status)}</div>
+      <div class="form-row">
+        <div><div class="text-sm text-muted">👤 ผู้ยืม</div><div style="font-weight:600">${req}</div></div>
+        <div><div class="text-sm text-muted">🏢 แผนก</div><div>${dept}</div></div>
+      </div>
+      <div><div class="text-sm text-muted">💻 อุปกรณ์</div><div style="font-weight:600">${eq}</div></div>
+      <div class="form-row">
+        <div><div class="text-sm text-muted">📅 วันเวลายืม</div><div style="font-weight:500">${fmtDT(start)}</div></div>
+        <div><div class="text-sm text-muted">📅 วันเวลาคืน</div><div style="font-weight:500">${fmtDT(end)}</div></div>
+      </div>
+      <div><div class="text-sm text-muted">⏱ ระยะเวลา</div><div>${days?days+' วัน ':''} ${hours?hours+' ชม.':''}</div></div>
+      ${note    ? `<div><div class="text-sm text-muted">📝 หมายเหตุ</div><div>${note}</div></div>` : ''}
+      ${handled ? `<div><div class="text-sm text-muted">✅ ดำเนินการโดย</div><div>${handled}</div></div>` : ''}
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">ปิด</button></div>
+  `);
+}
+
+// ==================== SETTINGS ====================
+async function renderSettings() {
+  document.getElementById('topbarActions').innerHTML = `<button class="btn btn-primary" onclick="openAddEq()">➕ เพิ่มอุปกรณ์</button>`;
+  document.getElementById('pageContent').innerHTML = `
+    <div class="card">
+      <div class="section-header">
+        <h2>⚙️ จัดการอุปกรณ์</h2>
+        <span id="eqSyncStatus" style="font-size:0.8rem;color:var(--text2);display:flex;align-items:center;gap:6px">
+          <span class="loading-spinner" style="border-color:rgba(0,0,0,0.15);border-top-color:var(--primary)"></span> กำลังโหลดข้อมูล...
+        </span>
+      </div>
+      <div class="filters">
+        <input type="text" id="eqSearch" placeholder="🔍 ค้นหา..." oninput="filterEq()">
+        <select id="eqCat" onchange="filterEq()"><option value="">ทุกหมวดหมู่</option></select>
+        <select id="eqStatus" onchange="filterEq()">
+          <option value="">ทุกสถานะ</option>
+          <option value="ว่าง">ว่าง</option>
+          <option value="ถูกยืม">ถูกยืม</option>
+          <option value="ซ่อมบำรุง">ซ่อมบำรุง</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="renderSettings()" style="margin-left:auto">🔄 รีเฟรช</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>รหัส</th><th>ชื่ออุปกรณ์</th><th>หมวดหมู่</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+          <tbody id="eqBody"><tr><td colspan="5" style="text-align:center;padding:36px;color:var(--text2)">
+            <span class="loading-spinner" style="border-color:rgba(0,0,0,0.15);border-top-color:var(--accent);width:24px;height:24px;border-width:3px"></span>
+          </td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  const res = await gasRequest('getEquipment');
+  if (res.success) {
+    state.equipment = res.data || [];
+    const syncEl = document.getElementById('eqSyncStatus');
+    if (syncEl) syncEl.innerHTML = `<span style="color:var(--success)">✅ ซิงค์กับ Google Sheet แล้ว (${state.equipment.length} รายการ)</span>`;
+    const cats = [...new Set(state.equipment.map(e=>e.category).filter(Boolean))];
+    const catEl = document.getElementById('eqCat');
+    if (catEl) catEl.innerHTML = `<option value="">ทุกหมวดหมู่</option>` + cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+  } else {
+    const syncEl = document.getElementById('eqSyncStatus');
+    if (syncEl) syncEl.innerHTML = `<span style="color:var(--warn)">⚠️ Demo mode (ไม่ได้เชื่อม GAS)</span>`;
+  }
+  const bodyEl = document.getElementById('eqBody');
+  if (bodyEl) bodyEl.innerHTML = renderEqRows(state.equipment);
+}
+
+function renderEqRows(eqs) {
+  if (!eqs || eqs.length === 0) return `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text2)">ไม่มีข้อมูลอุปกรณ์</td></tr>`;
+  return eqs.map(e=>{
+    const id = e.id || '-';
+    const name = e.name || e.Name || '-';
+    const category = e.category || e.Category || '-';
+    const status = e.status || e.Status || 'ว่าง';
+    return `
+    <tr>
+      <td><span class="tag">${id}</span></td>
+      <td style="font-weight:500">${name}</td>
+      <td>${category}</td>
+      <td>${eqStatusBadge(status)}</td>
+      <td><div class="row-actions">
+        <button class="btn btn-warn btn-sm" onclick="openEditEq('${id}')">✏️ แก้ไข</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteEq('${id}')">🗑 ลบ</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+function filterEq() {
+  const s = document.getElementById('eqSearch').value.toLowerCase();
+  const cat = document.getElementById('eqCat').value;
+  const st = document.getElementById('eqStatus').value;
+  let eqs = state.equipment;
+  if (s) eqs = eqs.filter(e => ((e.name||'')+(e.category||'')+(e.id||'')).toLowerCase().includes(s));
+  if (cat) eqs = eqs.filter(e => (e.category) === cat);
+  if (st) eqs = eqs.filter(e => (e.status) === st);
+  document.getElementById('eqBody').innerHTML = renderEqRows(eqs);
+}
+
+function openAddEq() {
+  openModal('➕ เพิ่มอุปกรณ์ใหม่', `
+    <div class="form-group"><label>ชื่ออุปกรณ์</label><input type="text" id="eqName" placeholder="เช่น Notebook Dell Latitude"></div>
+    <div class="form-row">
+      <div class="form-group"><label>หมวดหมู่</label>
+        <select id="eqCatNew">
+          <option value="Notebook">Notebook</option>
+          <option value="Tablet">Tablet</option>
+          <option value="Projector">Projector</option>
+          <option value="Printer">Printer</option>
+          <option value="Accessories">Accessories</option>
+          <option value="Network">Network</option>
+          <option value="อื่นๆ">อื่นๆ</option>
+        </select>
+      </div>
+      <div class="form-group"><label>สถานะ</label>
+        <select id="eqStatusNew">
+          <option value="ว่าง">ว่าง</option>
+          <option value="ถูกยืม">ถูกยืม</option>
+          <option value="ซ่อมบำรุง">ซ่อมบำรุง</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveAddEq()">💾 บันทึก</button>
+    </div>
+  `);
+}
+
+async function saveAddEq() {
+  const name = document.getElementById('eqName').value.trim();
+  const cat = document.getElementById('eqCatNew').value;
+  const status = document.getElementById('eqStatusNew').value;
+  if (!name) { showToast('⚠️ กรุณากรอกชื่ออุปกรณ์'); return; }
+  const saveBtn = document.querySelector('#modalBody .btn-primary');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<span class="loading-spinner"></span> กำลังบันทึก...'; }
+  const res = await gasRequest('addEquipment', { data: { name, category: cat, status }});
+  if (res.success) {
+    showToast('✅ เพิ่มอุปกรณ์แล้ว');
+    closeModal();
+    await renderSettings();
+  } else {
+    showToast('❌ เกิดข้อผิดพลาด');
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '💾 บันทึก'; }
+  }
+}
+
+function openEditEq(id) {
+  const eq = state.equipment.find(e => String(e.id||'').trim() === String(id).trim());
+  if (!eq) { showToast('⚠️ ไม่พบอุปกรณ์'); return; }
+  const name     = eq.name     || '';
+  const category = eq.category || '';
+  const status   = eq.status   || 'ว่าง';
+  openModal('✏️ แก้ไขอุปกรณ์', `
+    <div class="form-group"><label>ชื่ออุปกรณ์</label><input type="text" id="eqEditName" value="${name}"></div>
+    <div class="form-row">
+      <div class="form-group"><label>หมวดหมู่</label>
+        <select id="eqEditCat">
+          ${['Notebook','Tablet','Projector','Printer','Accessories','Network','อื่นๆ'].map(c=>`<option value="${c}" ${c===category?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>สถานะ</label>
+        <select id="eqEditStatus">
+          ${['ว่าง','ถูกยืม','ซ่อมบำรุง'].map(s=>`<option value="${s}" ${s===status?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveEditEq('${id}')">💾 บันทึก</button>
+    </div>
+  `);
+}
+
+async function saveEditEq(id) {
+  const name = document.getElementById('eqEditName').value.trim();
+  const category = document.getElementById('eqEditCat').value;
+  const status = document.getElementById('eqEditStatus').value;
+  if (!name) { showToast('⚠️ กรุณากรอกชื่ออุปกรณ์'); return; }
+  const saveBtn = document.querySelector('#modalBody .btn-primary');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<span class="loading-spinner"></span> กำลังบันทึก...'; }
+  const res = await gasRequest('updateEquipment', { id, data: { name, category, status }});
+  if (res.success) {
+    showToast('✅ อัปเดตข้อมูลแล้ว');
+    closeModal();
+    await renderSettings();
+  } else {
+    showToast('❌ เกิดข้อผิดพลาด');
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '💾 บันทึก'; }
+  }
+}
+
+async function deleteEq(id) {
+  openModal('🗑 ยืนยันการลบ', `
+    <p style="margin-bottom:20px;color:var(--text)">คุณต้องการลบอุปกรณ์ <strong>${id}</strong> ออกจากระบบใช่หรือไม่?</p>
+    <p style="color:var(--danger);font-size:0.85rem;margin-bottom:20px">⚠️ ข้อมูลจะถูกลบออกจาก Google Sheet ถาวร</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-danger" onclick="confirmDeleteEq('${id}')">🗑 ยืนยันลบ</button>
+    </div>
+  `);
+}
+
+async function confirmDeleteEq(id) {
+  const delBtn = document.querySelector('#modalBody .btn-danger');
+  if (delBtn) { delBtn.disabled = true; delBtn.innerHTML = '<span class="loading-spinner"></span> กำลังลบ...'; }
+  const res = await gasRequest('deleteEquipment', { id });
+  if (res.success) {
+    showToast('🗑 ลบอุปกรณ์แล้ว');
+    closeModal();
+    await renderSettings();
+  } else {
+    showToast('❌ เกิดข้อผิดพลาด');
+    if (delBtn) { delBtn.disabled = false; delBtn.innerHTML = '🗑 ยืนยันลบ'; }
+  }
+}
+
+// ==================== USERS ====================
+function renderUsers() {
+  document.getElementById('topbarActions').innerHTML = `<button class="btn btn-primary" onclick="openAddUser()">➕ เพิ่มผู้ใช้</button>`;
+  document.getElementById('pageContent').innerHTML = `
+    <div class="card">
+      <div class="section-header"><h2>👥 จัดการผู้ใช้</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Username</th><th>Role</th><th>สิทธิ์</th><th>จัดการ</th></tr></thead>
+          <tbody id="usersBody">${renderUsersRows()}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderUsersRows() {
+  return state.users.map(u=>`
+    <tr>
+      <td><div style="display:flex;align-items:center;gap:8px">
+        <div class="user-avatar" style="width:28px;height:28px;font-size:0.75rem">${u.username[0].toUpperCase()}</div>
+        <span style="font-weight:500">${u.username}</span>
+      </div></td>
+      <td>${u.role}</td>
+      <td>${roleBadge(u.role)}</td>
+      <td><div class="row-actions">
+        <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')" ${u.username==='admin'?'disabled':''}>🗑</button>
+      </div></td>
+    </tr>`).join('');
+}
+
+function openAddUser() {
+  openModal('➕ เพิ่มผู้ใช้ใหม่', `
+    <div class="form-group"><label>Username</label><input type="text" id="newUser" placeholder="username"></div>
+    <div class="form-group"><label>Password</label><input type="password" id="newPass" placeholder="••••"></div>
+    <div class="form-group"><label>Role</label>
+      <select id="newRole">
+        <option value="user">User</option>
+        <option value="it">IT</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveAddUser()">💾 บันทึก</button>
+    </div>
+  `);
+}
+
+async function saveAddUser() {
+  const username = document.getElementById('newUser').value.trim();
+  const password = document.getElementById('newPass').value.trim();
+  const role = document.getElementById('newRole').value;
+  if (!username || !password) { showToast('⚠️ กรุณากรอกข้อมูลให้ครบ'); return; }
+  if (state.users.find(u=>u.username===username)) { showToast('⚠️ Username นี้มีอยู่แล้ว'); return; }
+  const res = await gasRequest('addUser', { data: { username, password, role }});
+  if (res.success) { showToast('✅ เพิ่มผู้ใช้แล้ว'); closeModal(); renderUsers(); }
+}
+
+async function deleteUser(username) {
+  if (!confirm(`ยืนยันการลบผู้ใช้ "${username}"?`)) return;
+  const res = await gasRequest('deleteUser', { username });
+  if (res.success) { showToast('🗑 ลบผู้ใช้แล้ว'); renderUsers(); }
+}
+
+// ==================== APPROVE ====================
+async function renderApprove() {
+  document.getElementById('pageContent').innerHTML = `
+    <div class="card">
+      <div class="section-header">
+        <h2>✅ อนุมัติการยืมอุปกรณ์</h2>
+        <span id="approveSyncStatus" style="font-size:0.8rem;color:var(--text2);display:flex;align-items:center;gap:6px">
+          <span class="loading-spinner" style="border-color:rgba(0,0,0,0.15);border-top-color:var(--primary)"></span> กำลังโหลด...
+        </span>
+      </div>
+      <div id="approveBody">
+        <div style="text-align:center;padding:48px 0">
+          <span class="loading-spinner" style="width:28px;height:28px;border-width:3px;border-color:rgba(0,0,0,0.1);border-top-color:var(--accent)"></span>
+        </div>
+      </div>
+    </div>`;
+
+  const res = await gasRequest('getRequests');
+  const syncEl = document.getElementById('approveSyncStatus');
+
+  if (res.success) {
+    state.requests = res.data || [];
+    if (syncEl) syncEl.innerHTML =
+      `<span style="color:var(--success)">✅ ซิงค์แล้ว (${state.requests.length} รายการ)</span>`;
+  } else {
+    if (syncEl) syncEl.innerHTML =
+      `<span style="color:var(--danger)">⚠️ โหลดไม่สำเร็จ: ${res.message||'unknown'}</span>`;
+    showToast('⚠️ โหลดข้อมูลไม่สำเร็จ: ' + (res.message || ''));
+  }
+
+  _renderApproveBody();
+}
+
+function _renderApproveBody() {
+  const pending = state.requests.filter(r => (r.status||'') === 'รออนุมัติ');
+  const bodyEl = document.getElementById('approveBody');
+  if (!bodyEl) return;
+
+  // Debug: log first request keys to console
+  if (state.requests.length > 0) {
+    console.log('Request keys from GAS:', Object.keys(state.requests[0]));
+    console.log('First request:', state.requests[0]);
+  }
+
+  if (pending.length === 0) {
+    bodyEl.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">✅</div>
+        <div style="font-weight:600;font-size:1rem;margin-bottom:4px">ไม่มีรายการรออนุมัติ</div>
+        <div class="text-muted text-sm">รายการที่ยื่นขอยืมจะแสดงที่นี่</div>
+      </div>`;
+    return;
+  }
+
+  bodyEl.innerHTML = `
+    <div style="margin-bottom:14px">
+      <span class="badge badge-warn" style="font-size:0.85rem;padding:6px 14px">
+        ⏳ ${pending.length} รายการรอดำเนินการ
+      </span>
+    </div>
+    <div style="display:grid;gap:14px">
+      ${pending.map((r, idx) => {
+        // GAS getRows ส่ง key เป็น lowercase ล้วน: id, requester, dept, equipment, startdate, enddate, status, handledby, days, hours, note
+        const id    = String(r.id    || '').trim();
+        const req   = String(r.requester || '-');
+        const dept  = String(r.dept  || '-');
+        const eq    = String(r.equipment || '-');
+        const start = String(r.startdate || r.startDate || '-');
+        const end   = String(r.enddate   || r.endDate   || '-');
+        const days  = Number(r.days  || 0);
+        const hours = Number(r.hours || 0);
+        const note  = String(r.note  || '');
+        const safeIdx = 'apv-' + idx;
+
+        const durText = [days ? days + ' วัน' : '', hours ? hours + ' ชม.' : ''].filter(Boolean).join(' ') || '-';
+
+        return `
+        <div class="approve-card" id="${safeIdx}"
+             style="border:2px solid var(--border);border-radius:12px;padding:18px;
+                    background:#fff;transition:all 0.35s">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div style="flex:1;min-width:220px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+                <span class="tag">${id || '(ไม่มีรหัส)'}</span>
+                <span class="badge badge-warn">⏳ รออนุมัติ</span>
+              </div>
+              <div style="font-size:1.05rem;font-weight:700;color:var(--text);margin-bottom:2px">👤 ${req}</div>
+              <div style="font-size:0.85rem;color:var(--text2);margin-bottom:12px">🏢 ${dept}</div>
+              <div style="background:#f7f9ff;border-radius:10px;padding:12px 14px;
+                          display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:0.85rem">
+                <div>
+                  <div style="color:var(--text2);font-size:0.73rem;margin-bottom:3px;font-weight:600;letter-spacing:.4px">💻 อุปกรณ์</div>
+                  <div style="font-weight:600">${eq}</div>
+                </div>
+                <div>
+                  <div style="color:var(--text2);font-size:0.73rem;margin-bottom:3px;font-weight:600;letter-spacing:.4px">⏱ ระยะเวลา</div>
+                  <div style="font-weight:600">${durText}</div>
+                </div>
+                <div>
+                  <div style="color:var(--text2);font-size:0.73rem;margin-bottom:3px;font-weight:600;letter-spacing:.4px">📅 วันเวลายืม</div>
+                  <div style="font-weight:600">${fmtDT(start)}</div>
+                </div>
+                <div>
+                  <div style="color:var(--text2);font-size:0.73rem;margin-bottom:3px;font-weight:600;letter-spacing:.4px">📅 วันเวลาคืน</div>
+                  <div style="font-weight:600">${fmtDT(end)}</div>
+                </div>
+                ${note ? `
+                <div style="grid-column:1/-1">
+                  <div style="color:var(--text2);font-size:0.73rem;margin-bottom:3px;font-weight:600;letter-spacing:.4px">📝 หมายเหตุ</div>
+                  <div>${note}</div>
+                </div>` : ''}
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;min-width:150px">
+              <button class="btn btn-success"
+                      data-rid="${id}"
+                      data-safe="${safeIdx}"
+                      onclick="approveReq(event)"
+                      style="width:150px;justify-content:center;font-size:0.95rem">
+                ✅ อนุมัติ
+              </button>
+              <div style="font-size:0.72rem;color:var(--text2);text-align:center;line-height:1.4;max-width:150px">
+                การอนุมัติไม่สามารถยกเลิกได้
+              </div>
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+async function approveReq(evt) {
+  // ใน inline onclick="fn(event)" → currentTarget อาจ null หลัง dispatch ใช้ target แทน
+  const clicked = evt.target || evt.currentTarget;
+  // ถ้าคลิกที่ child ของปุ่ม (เช่น icon) ให้หา button parent
+  const btn = clicked.closest ? clicked.closest('[data-rid]') : clicked;
+
+  const id      = btn ? String(btn.getAttribute('data-rid') || '').trim() : '';
+  const safeIdx = btn ? String(btn.getAttribute('data-safe') || '').trim() : '';
+
+  if (!id) {
+    // Debug: แสดง keys ทั้งหมดของ request แรก
+    if (state.requests.length > 0) {
+      console.log('Keys in request[0]:', JSON.stringify(Object.keys(state.requests[0])));
+      console.log('request[0]:', JSON.stringify(state.requests[0]));
+    }
+    showToast('❌ ไม่พบรหัสรายการ');
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loading-spinner"></span> กำลังบันทึก...'; }
+
+  try {
+    const res = await gasRequest('updateRequest', {
+      id,
+      data: { status: 'อนุมัติ', handledBy: state.user.username }
+    });
+
+    if (res.success) {
+      const r = state.requests.find(x => String(x.id || '').trim() === id);
+      if (r) { r.status = 'อนุมัติ'; r.handledby = state.user.username; }
+      showToast('✅ อนุมัติการยืมแล้ว');
+
+      const card = safeIdx ? document.getElementById(safeIdx) : null;
+      if (card) {
+        card.style.borderColor = 'var(--success)';
+        card.style.background  = '#f0fdf4';
+        setTimeout(() => {
+          card.style.opacity   = '0';
+          card.style.transform = 'translateY(-8px)';
+          setTimeout(() => _renderApproveBody(), 360);
+        }, 300);
+      } else {
+        _renderApproveBody();
+      }
+    } else {
+      if (btn) { btn.disabled = false; btn.innerHTML = '✅ อนุมัติ'; }
+      showToast('❌ ' + (res.message || 'บันทึกไม่สำเร็จ'));
+    }
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '✅ อนุมัติ'; }
+    showToast('❌ เกิดข้อผิดพลาด: ' + (err.message || String(err)));
+  }
+}
+
+// ==================== HELPERS ====================
+function statusBadge(s) {
+  const map = {
+    'รออนุมัติ': 'badge-warn',
+    'อนุมัติ': 'badge-success',
+    'คืนแล้ว': 'badge-gray',
+    'ปฏิเสธ': 'badge-danger',
+  };
+  return `<span class="badge ${map[s]||'badge-info'}">${s}</span>`;
+}
+
+function eqStatusBadge(s) {
+  if (s === 'ว่าง') return `<span class="badge badge-success">✅ ว่าง</span>`;
+  if (s === 'ถูกยืม') return `<span class="badge badge-warn">📤 ถูกยืม</span>`;
+  return `<span class="badge badge-danger">🔧 ${s}</span>`;
+}
+
+function roleBadge(r) {
+  if (r === 'admin') return `<span class="badge badge-danger">👑 Admin</span>`;
+  if (r === 'it') return `<span class="badge badge-accent">💻 IT</span>`;
+  return `<span class="badge badge-info">👤 User</span>`;
+}
+
+// ==================== MODAL ====================
+function openModal(title, body) {
+  document.getElementById('modalTitle').innerHTML = title;
+  document.getElementById('modalBody').innerHTML = body;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+function closeModalIfBG(e) { if (e.target === document.getElementById('modalOverlay')) closeModal(); }
+
+// ==================== TOAST ====================
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ==================== DARK MODE ====================
+function toggleDark() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  setTheme(isDark ? 'light' : 'dark');
+}
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
+  // Update meta theme-color
+  const metaColor = document.getElementById('themeColorMeta');
+  if (metaColor) metaColor.content = theme === 'dark' ? '#0f1117' : '#1a237e';
+}
+function initTheme() {
+  const saved = localStorage.getItem('theme');
+  // ถ้าไม่มีค่า ดู system preference
+  if (saved) { setTheme(saved); return; }
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  setTheme(prefersDark ? 'dark' : 'light');
+}
+// ฟัง system theme change
+if (window.matchMedia) {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+    if (!localStorage.getItem('theme')) setTheme(e.matches ? 'dark' : 'light');
+  });
+}
+
+// ==================== MOBILE SIDEBAR ====================
+function toggleSidebar() {
+  const sb  = document.getElementById('sidebar');
+  const ovl = document.getElementById('sidebarOverlay');
+  if (!sb) return;
+  const isOpen = sb.classList.contains('open');
+  isOpen ? closeSidebar() : openSidebar();
+}
+function openSidebar() {
+  const sb  = document.getElementById('sidebar');
+  const ovl = document.getElementById('sidebarOverlay');
+  if (sb)  sb.classList.add('open');
+  if (ovl) ovl.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeSidebar() {
+  const sb  = document.getElementById('sidebar');
+  const ovl = document.getElementById('sidebarOverlay');
+  if (sb)  sb.classList.remove('open');
+  if (ovl) ovl.classList.remove('open');
+  document.body.style.overflow = '';
+}
+// ปิด sidebar เมื่อ navigate บน mobile
+// (closeSidebar ถูกเรียกใน navigate() ด้านล่างแล้ว)
+// ปิด sidebar เมื่อ resize กลับเป็น desktop
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 768) closeSidebar();
+});
+
+// ==================== PWA ====================
+let _deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+  const btn = document.getElementById('installBtn');
+  if (btn) btn.style.display = 'flex';
+});
+
+window.addEventListener('appinstalled', () => {
+  const btn = document.getElementById('installBtn');
+  if (btn) btn.style.display = 'none';
+  _deferredInstallPrompt = null;
+  showToast('✅ ติดตั้ง App สำเร็จ!');
+});
+
+async function installPWA() {
+  if (!_deferredInstallPrompt) {
+    showToast('ℹ️ เปิดในบราวเซอร์ Chrome แล้วลองใหม่');
+    return;
+  }
+  _deferredInstallPrompt.prompt();
+  const { outcome } = await _deferredInstallPrompt.userChoice;
+  if (outcome === 'accepted') showToast('✅ กำลังติดตั้ง...');
+  _deferredInstallPrompt = null;
+  const btn = document.getElementById('installBtn');
+  if (btn) btn.style.display = 'none';
+}
+
+// สร้าง Web App Manifest แบบ dynamic (ไม่ต้องมีไฟล์แยก)
+function injectManifest() {
+  const manifest = {
+    name: 'IT Equipment Loan System',
+    short_name: 'IT Loan',
+    description: 'ระบบยืมอุปกรณ์ไอที',
+    start_url: './',
+    display: 'standalone',
+    background_color: '#0f1117',
+    theme_color: '#1a237e',
+    orientation: 'portrait-primary',
+    icons: [
+      { src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231a237e'/><text y='72' x='50' text-anchor='middle' font-size='60'>💻</text></svg>", sizes: '192x192', type: 'image/svg+xml' },
+      { src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231a237e'/><text y='72' x='50' text-anchor='middle' font-size='60'>💻</text></svg>", sizes: '512x512', type: 'image/svg+xml' },
+    ],
+  };
+  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+  const url  = URL.createObjectURL(blob);
+  const link = document.getElementById('pwaManifest');
+  if (link) link.href = url;
+}
+
+// ==================== KEYBOARD ====================
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); closeSidebar(); }
+});
+
+// ==================== INIT ====================
+window.addEventListener('DOMContentLoaded', () => {
+  initTheme();
+  injectManifest();
+  updateGasStatusBar();
+  // Register service worker for PWA offline support
+  if ('serviceWorker' in navigator) {
+    // inline SW — cache app shell
+    const swCode = `
+const CACHE = 'it-loan-v1';
+const ASSETS = [self.location.href || '/'];
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).catch(()=>{}));
+  self.skipWaiting();
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
+  self.clients.claim();
+});
+self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET') return;
+  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+});`;
+    const swBlob = new Blob([swCode], { type: 'application/javascript' });
+    const swUrl  = URL.createObjectURL(swBlob);
+    navigator.serviceWorker.register(swUrl, { scope: './' }).catch(() => {});
+  }
+});
+</script>
+</body>
+</html>
