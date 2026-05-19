@@ -733,16 +733,182 @@ function navigate(page) {
   }, 80);
 }
 
+// ==================== RATE LIMITING ====================
+const RATE_LIMIT = { maxRequests: 3, windowMs: 60 * 60 * 1000 }; // 3 ครั้ง / ชั่วโมง
+
+function checkRateLimit(username) {
+  const key = 'rl_' + username;
+  const now = Date.now();
+  let data = JSON.parse(localStorage.getItem(key) || '{"count":0,"window":0}');
+  // Reset ถ้าหน้าต่างเวลาผ่านไปแล้ว
+  if (now - data.window > RATE_LIMIT.windowMs) {
+    data = { count: 0, window: now };
+  }
+  if (data.count >= RATE_LIMIT.maxRequests) {
+    const remaining = Math.ceil((RATE_LIMIT.windowMs - (now - data.window)) / 60000);
+    return { allowed: false, remaining, count: data.count };
+  }
+  data.count++;
+  localStorage.setItem(key, JSON.stringify(data));
+  return { allowed: true, remaining: 0, count: data.count };
+}
+
+function getRateLimitStatus(username) {
+  const key = 'rl_' + username;
+  const now = Date.now();
+  const data = JSON.parse(localStorage.getItem(key) || '{"count":0,"window":0}');
+  if (now - data.window > RATE_LIMIT.windowMs) return { count: 0, max: RATE_LIMIT.maxRequests };
+  return { count: data.count, max: RATE_LIMIT.maxRequests };
+}
+
+// ==================== DATETIME PARSER (รองรับทุก format จาก GAS) ====================
+// GAS อาจส่ง: "2026-05-19 1:42", "2026-05-19T01:42", "2026-05-19 14:00", "2026-05-19"
+function parseDT(raw) {
+  if (!raw || raw === '-') return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  // Parse โดยตรง — ไม่ผ่าน new Date() เพื่อหลีก UTC offset
+  const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[T ](\d{1,2}):(\d{2})/);
+  if (m) {
+    return new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]),
+                    parseInt(m[4]), parseInt(m[5]), 0);
+  }
+  // วันเดียว
+  const d = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (d) return new Date(parseInt(d[1]), parseInt(d[2])-1, parseInt(d[3]));
+  return null;
+}
+
+// fmtDT สำหรับแสดงผลใน HTML (Thai date)
+function fmtDT(raw) {
+  if (!raw || raw === '-') return '-';
+  const s = String(raw).trim();
+  const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[T ](\d{1,2}):(\d{2})/);
+  if (m) {
+    const day  = String(m[3]).padStart(2,'0');
+    const mon  = String(m[2]).padStart(2,'0');
+    const year = parseInt(m[1]) + 543;
+    const hr   = String(m[4]).padStart(2,'0');
+    const min  = m[5];
+    return `${day}/${mon}/${year} ${hr}:${min} น.`;
+  }
+  // วันเดียว
+  const d2 = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (d2) return `${String(d2[3]).padStart(2,'0')}/${String(d2[2]).padStart(2,'0')}/${parseInt(d2[1])+543}`;
+  try {
+    const d = new Date(s);
+    if (!isNaN(d)) {
+      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()+543} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')} น.`;
+    }
+  } catch(e) {}
+  return s;
+}
+
 // ==================== DASHBOARD ====================
 function renderDashboard() {
   const total = state.equipment.length;
-  const available = state.equipment.filter(e => e.status === 'ว่าง').length;
-  const borrowed = state.equipment.filter(e => e.status === 'ถูกยืม').length;
-  const pending = state.requests.filter(r => r.status === 'รออนุมัติ').length;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // เปรียบเทียบระดับวัน
+
+  // อุปกรณ์ "ถูกยืมอยู่" = request อนุมัติ ที่ enddate >= วันนี้ (ยังไม่คืน)
+  const activeBorrowedEq = new Set();
+  state.requests.forEach(r => {
+    const s = (r.status || '').trim();
+    if (s !== 'อนุมัติ') return;
+    const endDt = parseDT(r.enddate || r.endDate || '');
+    if (!endDt) return;
+    const endDay = new Date(endDt.getFullYear(), endDt.getMonth(), endDt.getDate());
+    if (endDay >= today) {
+      activeBorrowedEq.add((r.equipment || '').trim());
+    }
+  });
+  const borrowed  = activeBorrowedEq.size;
+  const available = Math.max(0, total - borrowed);
+  const pending   = state.requests.filter(r => (r.status||'') === 'รออนุมัติ').length;
+
+  // ---- สถิติ ----
+  // 1. อุปกรณ์ถูกยืมบ่อยที่สุด (นับเฉพาะ อนุมัติ+คืนแล้ว)
+  const eqCount = {};
+  state.requests.forEach(r => {
+    const s  = r.status || '';
+    const eq = (r.equipment || '').trim();
+    if (!eq || s === 'ปฏิเสธ') return;
+    eqCount[eq] = (eqCount[eq] || 0) + 1;
+  });
+  const topEq  = Object.entries(eqCount).sort((a,b) => b[1]-a[1]).slice(0, 6);
+  const maxEq  = topEq.length ? topEq[0][1] : 1;
+
+  // 2. แผนกที่ยืมมากที่สุด
+  const deptCount = {};
+  state.requests.forEach(r => {
+    const s = r.status || '';
+    const d = (r.dept || '').trim();
+    if (!d || s === 'ปฏิเสธ') return;
+    deptCount[d] = (deptCount[d] || 0) + 1;
+  });
+  const topDept = Object.entries(deptCount).sort((a,b) => b[1]-a[1]).slice(0, 6);
+  const maxDept = topDept.length ? topDept[0][1] : 1;
+
+  // 3. อัตราการยืมรายเดือน (6 เดือนล่าสุด)
+  const monthlyData = {};
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    monthlyData[key] = 0;
+  }
+  state.requests.forEach(r => {
+    if ((r.status||'') === 'ปฏิเสธ') return;
+    const raw = r.startdate || r.startDate || '';
+    if (!raw) return;
+    const d = parseDT(raw);
+    if (!d) return;
+    const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    if (key in monthlyData) monthlyData[key]++;
+  });
+  const monthlyEntries = Object.entries(monthlyData);
+  const maxMonthly = Math.max(...monthlyEntries.map(e=>e[1]), 1);
+
+  // Thai month short
+  const thMonths = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const fmtMonth = key => {
+    const [y,m] = key.split('-');
+    return thMonths[parseInt(m)] + (parseInt(y)+543-2500);
+  };
+
+  // Rate limit
+  const rl = state.user ? getRateLimitStatus(state.user.username) : { count:0, max:3 };
+
+  // Donut — ใช้ available/borrowed จริง
+  const donutR = 40, donutCX = 60, donutCY = 60, donutStroke = 18;
+  const donutCirc = 2 * Math.PI * donutR;
+  const donutData = [
+    { label:'ว่าง',   val: available, color:'#00897b' },
+    { label:'ถูกยืม', val: borrowed,  color:'#ff6f00' },
+  ].filter(d => d.val > 0);
+  if (donutData.length === 0) donutData.push({ label:'ไม่มีข้อมูล', val:1, color:'#ccc' });
+  let donutOffset = 0;
+  const donutSlices = donutData.map(d => {
+    const pct  = total > 0 ? d.val / total : 1;
+    const dash = pct * donutCirc;
+    const gap  = donutCirc - dash;
+    const offsetPx = -(donutOffset * donutCirc);
+    const slice = `<circle cx="${donutCX}" cy="${donutCY}" r="${donutR}"
+      fill="none" stroke="${d.color}" stroke-width="${donutStroke}"
+      stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}"
+      stroke-dashoffset="${offsetPx.toFixed(2)}"
+      transform="rotate(-90 ${donutCX} ${donutCY})"/>`;
+    donutOffset += pct;
+    return slice;
+  }).join('');
+
+  const BAR_COLORS  = ['#1a237e','#283593','#3949ab','#3f51b5','#5c6bc0','#7986cb'];
+  const DEPT_COLORS = ['#00695c','#00796b','#00897b','#009688','#26a69a','#4db6ac'];
+  const LINE_COLOR  = '#00bcd4';
 
   document.getElementById('pageContent').innerHTML = `
+    <!-- STAT CARDS -->
     <div class="stat-grid">
-      <div class="stat-card s1">
+      <div class="stat-card s1" style="cursor:pointer" onclick="navigate('settings')">
         <span class="stat-icon">💻</span>
         <div><div class="stat-val">${total}</div><div class="stat-label">อุปกรณ์ทั้งหมด</div></div>
       </div>
@@ -754,34 +920,175 @@ function renderDashboard() {
         <span class="stat-icon">📤</span>
         <div><div class="stat-val">${borrowed}</div><div class="stat-label">ถูกยืมอยู่</div></div>
       </div>
-      <div class="stat-card s4">
+      <div class="stat-card s4" style="cursor:pointer" onclick="navigate('approve')">
         <span class="stat-icon">🕐</span>
         <div><div class="stat-val">${pending}</div><div class="stat-label">รออนุมัติ</div></div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
+
+    <!-- RATE LIMIT BANNER -->
+    ${state.user && state.user.role === 'user' ? `
+    <div style="background:var(--card);border-radius:var(--radius);padding:12px 18px;margin-bottom:16px;
+                box-shadow:var(--shadow);display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div style="font-size:1.2rem">🛡️</div>
+      <div style="flex:1;min-width:120px">
+        <div style="font-weight:600;font-size:0.88rem;color:var(--text)">วงเงินส่งใบขอยืม</div>
+        <div style="font-size:0.78rem;color:var(--text2)">สูงสุด ${RATE_LIMIT.maxRequests} ครั้ง / ชั่วโมง</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        ${Array.from({length:RATE_LIMIT.maxRequests},(_,i)=>
+          `<div style="width:26px;height:26px;border-radius:50%;
+            background:${i<rl.count?'var(--warn)':'var(--success)'};
+            display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#fff;font-weight:700">
+            ${i<rl.count?'📤':'✓'}
+          </div>`).join('')}
+      </div>
+      <span style="font-size:0.85rem;font-weight:700;color:${rl.count>=rl.max?'var(--danger)':'var(--success)'}">
+        ${rl.count}/${rl.max}
+      </span>
+    </div>` : ''}
+
+    <!-- ROW 1: Calendar + Pending -->
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px" class="dash-row">
       <div class="card">
         <div class="card-title">📅 ปฏิทินการยืมอุปกรณ์</div>
         ${renderCalendarHTML()}
       </div>
       <div class="card">
-        <div class="card-title">⏳ รายการรออนุมัติ</div>
+        <div class="card-title">⏳ รออนุมัติ <span class="badge badge-warn" style="margin-left:4px">${pending}</span></div>
         ${(()=>{
-          const pending = state.requests.filter(r=>(r.status||'')==='รออนุมัติ');
-          if(pending.length===0) return '<div class="empty-state"><div class="empty-icon">✅</div><div>ไม่มีรายการรออนุมัติ</div></div>';
-          return pending.map(r=>'<div style="padding:10px 0;border-bottom:1px solid var(--border)">'
-            +'<div style="font-weight:600;font-size:0.88rem">'+(r.requester||'-')+'</div>'
-            +'<div style="font-size:0.8rem;color:var(--text2)">'+(r.equipment||'-')+'</div>'
-            +'<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'
-            +'<span class="badge badge-info">'+(r.dept||'')+'</span>'
-            +'<span class="badge badge-warn">รออนุมัติ</span>'
+          const p = state.requests.filter(r=>(r.status||'')==='รออนุมัติ');
+          if(!p.length) return '<div class="empty-state" style="padding:16px 0"><div class="empty-icon" style="font-size:2rem">✅</div><div style="font-size:0.85rem">ไม่มีรายการรออนุมัติ</div></div>';
+          return p.map(r=>'<div style="padding:9px 0;border-bottom:1px solid var(--border)">'
+            +'<div style="font-weight:600;font-size:0.85rem">'+(r.requester||'-')+'</div>'
+            +'<div style="font-size:0.78rem;color:var(--text2);margin:2px 0">'+(r.equipment||'-')+'</div>'
+            +'<div style="display:flex;gap:5px;flex-wrap:wrap">'
+            +'<span class="badge badge-info" style="font-size:0.68rem">'+(r.dept||'')+'</span>'
+            +'<span class="badge badge-warn" style="font-size:0.68rem">รออนุมัติ</span>'
             +'</div></div>').join('');
         })()}
       </div>
     </div>
+
+    <!-- ROW 2: Donut + Top Equipment -->
+    <div style="display:grid;grid-template-columns:200px 1fr;gap:16px;margin-bottom:16px" class="dash-row">
+      <div class="card" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
+        <div class="card-title" style="align-self:flex-start">📊 สถานะ</div>
+        <svg viewBox="0 0 120 120" width="130" height="130">
+          ${donutSlices}
+          <text x="${donutCX}" y="${donutCY-4}" text-anchor="middle" dominant-baseline="middle"
+                font-family="Kanit,sans-serif" font-size="16" font-weight="700" fill="var(--text)">${total}</text>
+          <text x="${donutCX}" y="${donutCY+12}" text-anchor="middle"
+                font-family="Sarabun,sans-serif" font-size="8" fill="var(--text2)">ทั้งหมด</text>
+        </svg>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;width:100%">
+          ${donutData.filter(d=>d.label!=='ไม่มีข้อมูล').map(d=>`
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.8rem">
+              <div style="display:flex;align-items:center;gap:5px">
+                <div style="width:10px;height:10px;border-radius:2px;background:${d.color};flex-shrink:0"></div>
+                <span style="color:var(--text2)">${d.label}</span>
+              </div>
+              <span style="font-weight:700;color:var(--text)">${d.val}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🏆 อุปกรณ์ที่ถูกยืมบ่อยที่สุด</div>
+        ${topEq.length === 0
+          ? '<div class="empty-state" style="padding:16px 0"><div class="empty-icon" style="font-size:2rem">📦</div><div style="font-size:0.85rem">ยังไม่มีข้อมูลการยืม</div></div>'
+          : topEq.map(([name, count], i) => {
+              const pct = Math.round(count/maxEq*100);
+              const short = name.length > 28 ? name.slice(0,28)+'…' : name;
+              return `<div style="margin-bottom:11px">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                  <div style="font-size:0.83rem;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px">
+                    <span style="background:${BAR_COLORS[i]};color:#fff;border-radius:4px;padding:1px 6px;font-size:0.7rem;flex-shrink:0">#${i+1}</span>
+                    ${short}
+                  </div>
+                  <span style="font-size:0.82rem;font-weight:700;color:${BAR_COLORS[i]};flex-shrink:0;margin-left:8px">${count} ครั้ง</span>
+                </div>
+                <div style="background:var(--border);border-radius:6px;height:9px;overflow:hidden">
+                  <div style="height:100%;width:0%;background:${BAR_COLORS[i]};border-radius:6px;transition:width 0.8s ease ${i*0.1}s"
+                       data-w="${pct}" class="dash-bar"></div>
+                </div>
+              </div>`;
+            }).join('')
+        }
+      </div>
+    </div>
+
+    <!-- ROW 3: Monthly Line + Dept -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px" class="dash-row">
+      <div class="card">
+        <div class="card-title">📈 อัตราการยืมรายเดือน</div>
+        ${monthlyEntries.every(([,v])=>v===0)
+          ? '<div class="empty-state" style="padding:16px 0"><div class="empty-icon" style="font-size:2rem">📈</div><div style="font-size:0.85rem">ยังไม่มีข้อมูล</div></div>'
+          : `<div style="position:relative;overflow:hidden">
+          <svg width="100%" height="150" viewBox="0 0 300 135" preserveAspectRatio="none" style="overflow:visible">
+            <defs>
+              <linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="${LINE_COLOR}" stop-opacity="0.3"/>
+                <stop offset="100%" stop-color="${LINE_COLOR}" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            ${[0,50,100].map(p=>{
+              const y=110-(p/100)*95;
+              return `<line x1="0" y1="${y}" x2="290" y2="${y}" stroke="var(--border)" stroke-width="0.6"/>
+                <text x="-3" y="${y+3}" text-anchor="end" font-size="7.5" fill="var(--text2)">${Math.round(p/100*maxMonthly)}</text>`;
+            }).join('')}
+            <path d="M ${monthlyEntries.map(([,v],i)=>{
+              const x=i*(290/Math.max(monthlyEntries.length-1,1));
+              const y=110-(v/maxMonthly)*95;
+              return x+','+y;
+            }).join(' L ')} L ${290},110 L 0,110 Z" fill="url(#lg)"/>
+            <polyline points="${monthlyEntries.map(([,v],i)=>{
+              const x=i*(290/Math.max(monthlyEntries.length-1,1));
+              const y=110-(v/maxMonthly)*95;
+              return x+','+y;
+            }).join(' ')}" fill="none" stroke="${LINE_COLOR}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            ${monthlyEntries.map(([key,v],i)=>{
+              const x=i*(290/Math.max(monthlyEntries.length-1,1));
+              const y=110-(v/maxMonthly)*95;
+              return `<circle cx="${x}" cy="${y}" r="4" fill="${LINE_COLOR}" stroke="var(--card)" stroke-width="2"/>
+                ${v>0?`<text x="${x}" y="${y-8}" text-anchor="middle" font-size="9" font-weight="700" fill="${LINE_COLOR}">${v}</text>`:''}
+                <text x="${x}" y="128" text-anchor="middle" font-size="8" fill="var(--text2)">${fmtMonth(key)}</text>`;
+            }).join('')}
+          </svg></div>`
+        }
+      </div>
+      <div class="card">
+        <div class="card-title">🏢 แผนกที่ยืมมากที่สุด</div>
+        ${topDept.length === 0
+          ? '<div class="empty-state" style="padding:16px 0"><div class="empty-icon" style="font-size:2rem">🏢</div><div style="font-size:0.85rem">ยังไม่มีข้อมูลการยืม</div></div>'
+          : topDept.map(([name, count], i) => {
+              const pct = Math.round(count/maxDept*100);
+              const short = name.length > 22 ? name.slice(0,22)+'…' : name;
+              return `<div style="margin-bottom:10px">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                  <div style="font-size:0.82rem;font-weight:600;color:var(--text)">${short}</div>
+                  <span style="font-size:0.82rem;font-weight:700;color:${DEPT_COLORS[i]};flex-shrink:0;margin-left:8px">${count} ครั้ง</span>
+                </div>
+                <div style="background:var(--border);border-radius:6px;height:9px;overflow:hidden">
+                  <div style="height:100%;width:0%;background:${DEPT_COLORS[i]};border-radius:6px;transition:width 0.8s ease ${i*0.12}s"
+                       data-w="${pct}" class="dash-bar"></div>
+                </div>
+              </div>`;
+            }).join('')
+        }
+      </div>
+    </div>
   `;
+
   attachCalendarEvents();
+  setTimeout(() => {
+    document.querySelectorAll('.dash-bar').forEach(b => { b.style.width = (b.getAttribute('data-w')||0)+'%'; });
+    if (window.innerWidth <= 768) {
+      document.querySelectorAll('.dash-row').forEach(el => { el.style.gridTemplateColumns='1fr'; });
+    }
+  }, 80);
 }
+
 
 function renderCalendarHTML() {
   const now = new Date();
@@ -937,9 +1244,17 @@ function renderBorrow() {
         <label>📝 หมายเหตุ</label>
         <textarea id="borrowNote" rows="3" placeholder="รายละเอียดเพิ่มเติม เช่น วัตถุประสงค์การใช้งาน..."></textarea>
       </div>
-      <div style="display:flex;gap:10px;margin-top:8px">
+      <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="submitBorrow()">📤 ส่งใบขอยืม</button>
         <button class="btn btn-ghost" onclick="resetBorrowForm()">🔄 ล้างข้อมูล</button>
+        ${(()=>{
+          const rl = state.user ? getRateLimitStatus(state.user.username) : {count:0,max:3};
+          const left = rl.max - rl.count;
+          const color = left === 0 ? 'var(--danger)' : left === 1 ? 'var(--warn)' : 'var(--success)';
+          return `<span style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:${color};font-weight:600;padding:8px 12px;background:var(--bg);border-radius:8px">
+            🛡️ ส่งได้อีก ${left}/${rl.max} ครั้ง (ต่อชั่วโมง)
+          </span>`;
+        })()}
       </div>
     </div>
   `;
@@ -991,6 +1306,26 @@ async function submitBorrow() {
   }
   if (new Date(end) <= new Date(start)) {
     showToast('⚠️ วันที่คืนต้องหลังจากวันที่ยืม'); return;
+  }
+
+  // ✅ Rate Limiting Check
+  const rl = checkRateLimit(state.user.username);
+  if (!rl.allowed) {
+    openModal('🚫 ส่งใบขอยืมเกินกำหนด', `
+      <div style="text-align:center;padding:8px 0 16px">
+        <div style="font-size:3rem;margin-bottom:12px">🛡️</div>
+        <div style="font-weight:700;font-size:1.1rem;color:var(--danger);margin-bottom:8px">ส่งใบขอยืมเกินจำนวนที่กำหนด</div>
+        <div style="color:var(--text2);font-size:0.9rem;margin-bottom:16px">
+          คุณส่งใบขอยืมครบ <strong>${RATE_LIMIT.maxRequests} ครั้ง</strong> ต่อชั่วโมงแล้ว<br>
+          กรุณารอ <strong>${rl.remaining} นาที</strong> แล้วลองใหม่
+        </div>
+        <div style="background:var(--bg);border-radius:10px;padding:12px;font-size:0.85rem;color:var(--text2)">
+          ระบบจำกัดการส่งเพื่อป้องกันการส่งซ้ำเกินไป
+        </div>
+      </div>
+      <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">ปิด</button></div>
+    `);
+    return;
   }
 
   // ตรวจสอบช่วงเวลาซ้ำ — อุปกรณ์เดียวกัน ช่วงเวลาทับกัน สถานะ รออนุมัติ/อนุมัติ
@@ -1105,14 +1440,6 @@ function renderHistory() {
   `;
 }
 
-function fmtDT(dt) {
-  if (!dt || dt === '-') return '-';
-  try {
-    const d = new Date(dt);
-    if (isNaN(d)) return dt;
-    return d.toLocaleString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  } catch { return dt; }
-}
 
 function renderHistRows(reqs, role) {
   if (!reqs || reqs.length === 0) return `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text2)">ไม่มีข้อมูล</td></tr>`;
@@ -1286,7 +1613,25 @@ function filterEq() {
 }
 
 function openAddEq() {
+  // คำนวณ ID ถัดไป: หา max number จาก AST-xxx แล้ว +1
+  let nextNum = 1;
+  state.equipment.forEach(e => {
+    const id = String(e.id || e.ID || '');
+    const m  = id.match(/AST-0*(\d+)/i);
+    if (m) nextNum = Math.max(nextNum, parseInt(m[1]) + 1);
+  });
+  const nextId = 'AST-' + String(nextNum).padStart(3, '0');
+
   openModal('➕ เพิ่มอุปกรณ์ใหม่', `
+    <div class="form-group">
+      <label>รหัสอุปกรณ์</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="eqIdNew" value="${nextId}" placeholder="AST-001"
+               style="font-family:monospace;font-weight:700;font-size:1rem;letter-spacing:1px">
+        <button class="btn btn-ghost btn-sm" onclick="autoNextId()" title="สร้างอัตโนมัติ" style="flex-shrink:0;white-space:nowrap">🔄 Auto</button>
+      </div>
+      <div style="font-size:0.75rem;color:var(--text2);margin-top:4px">กรอกเองหรือกด Auto เพื่อสร้างอัตโนมัติ</div>
+    </div>
     <div class="form-group"><label>ชื่ออุปกรณ์</label><input type="text" id="eqName" placeholder="เช่น Notebook Dell Latitude"></div>
     <div class="form-row">
       <div class="form-group"><label>หมวดหมู่</label>
@@ -1315,20 +1660,37 @@ function openAddEq() {
   `);
 }
 
+function autoNextId() {
+  let nextNum = 1;
+  state.equipment.forEach(e => {
+    const id = String(e.id || e.ID || '');
+    const m  = id.match(/AST-0*(\d+)/i);
+    if (m) nextNum = Math.max(nextNum, parseInt(m[1]) + 1);
+  });
+  const el = document.getElementById('eqIdNew');
+  if (el) el.value = 'AST-' + String(nextNum).padStart(3, '0');
+}
+
 async function saveAddEq() {
-  const name = document.getElementById('eqName').value.trim();
-  const cat = document.getElementById('eqCatNew').value;
-  const status = document.getElementById('eqStatusNew').value;
-  if (!name) { showToast('⚠️ กรุณากรอกชื่ออุปกรณ์'); return; }
+  const customId = (document.getElementById('eqIdNew')?.value || '').trim();
+  const name     = document.getElementById('eqName').value.trim();
+  const cat      = document.getElementById('eqCatNew').value;
+  const status   = document.getElementById('eqStatusNew').value;
+  if (!customId) { showToast('⚠️ กรุณากรอกรหัสอุปกรณ์'); return; }
+  if (!name)     { showToast('⚠️ กรุณากรอกชื่ออุปกรณ์'); return; }
+  // ตรวจ ID ซ้ำ
+  if (state.equipment.find(e => String(e.id||e.ID||'').trim() === customId)) {
+    showToast('⚠️ รหัส ' + customId + ' มีอยู่แล้ว'); return;
+  }
   const saveBtn = document.querySelector('#modalBody .btn-primary');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<span class="loading-spinner"></span> กำลังบันทึก...'; }
-  const res = await gasRequest('addEquipment', { data: { name, category: cat, status }});
+  const res = await gasRequest('addEquipment', { data: { id: customId, name, category: cat, status } });
   if (res.success) {
-    showToast('✅ เพิ่มอุปกรณ์แล้ว');
+    showToast('✅ เพิ่มอุปกรณ์ ' + customId + ' แล้ว');
     closeModal();
     await renderSettings();
   } else {
-    showToast('❌ เกิดข้อผิดพลาด');
+    showToast('❌ ' + (res.message || 'เกิดข้อผิดพลาด'));
     if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '💾 บันทึก'; }
   }
 }
