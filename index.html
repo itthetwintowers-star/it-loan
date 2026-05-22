@@ -1406,13 +1406,20 @@ function renderBorrow() {
   `;
   // Init dept grid
   const grid = document.getElementById('borrowDeptGrid');
-  grid.innerHTML = DEPARTMENTS.map(d =>
-    `<button class="dept-btn ${borrowState.dept === d.id ? 'selected':''}" onclick="selectBorrowDept('${d.id}', this)">
-      <span class="dept-icon">${d.icon}</span>${d.name}
-    </button>`
-  ).join('');
-  // Init autocomplete equipment
-  setTimeout(() => buildEquipmentAutocomplete('borrowEqWrap','borrowEq',''), 50);
+  if (grid) {
+    grid.innerHTML = DEPARTMENTS.map(d =>
+      `<button class="dept-btn ${borrowState.dept === d.id ? 'selected':''}" onclick="selectBorrowDept('${d.id}', this)">
+        <span class="dept-icon">${d.icon}</span>${d.name}
+      </button>`
+    ).join('');
+  }
+  // Init autocomplete — ต้องเรียกหลัง innerHTML set เสร็จ
+  // ใช้ requestAnimationFrame แทน setTimeout เพื่อให้แน่ใจว่า DOM render แล้ว
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      buildEquipmentAutocomplete('borrowEqWrap', 'borrowEq', '');
+    });
+  });
 }
 
 function calcDuration() {
@@ -2658,33 +2665,55 @@ function injectACStyle() {
 function buildEquipmentAutocomplete(wrapId, hiddenId, initVal) {
   injectACStyle();
   const wrap = document.getElementById(wrapId);
-  if (!wrap) return;
-  const uid = wrapId.replace(/\W/g,'');
+  if (!wrap) { console.warn('AC: wrap not found:', wrapId); return; }
+  const uid = wrapId.replace(/[^a-zA-Z0-9]/g, '');
   wrap.className = 'ac-wrap';
-  wrap.innerHTML = '<input type="text" id="ac_'+uid+'" class="ac-inp" placeholder="พิมพ์ชื่ออุปกรณ์..." value="'+(initVal||'')+'" autocomplete="off"><div class="ac-dd" id="add_'+uid+'"></div>';
+  wrap.innerHTML = [
+    '<input type="text" id="ac_'+uid+'" class="ac-inp"',
+    ' placeholder="พิมพ์หรือคลิกเพื่อดูรายการอุปกรณ์..." value="'+(initVal||'')+'" autocomplete="off">',
+    '<div class="ac-dd" id="add_'+uid+'"></div>',
+  ].join('');
   const inp = document.getElementById('ac_'+uid);
   const dd  = document.getElementById('add_'+uid);
   const hid = document.getElementById(hiddenId);
+  if (!inp || !dd) { console.warn('AC: elements missing for', wrapId); return; }
 
-  function show(q) {
-    const list = state.equipment.filter(e=>(e.name||e.Name||'').toLowerCase().includes((q||'').toLowerCase()));
-    dd.innerHTML = list.length
-      ? list.map(e=>{const n=e.name||e.Name||'',st=e.status||e.Status||'ว่าง',ok=st==='ว่าง';
-          return '<div class="ac-it" onclick="acPick(\''+uid+'\',\''+hiddenId+'\',\''+n.replace(/'/g,"\\'")+'\')"><span>'+n+'</span><span class="ac-badge '+(ok?'ac-ok':'ac-no')+'">'+st+'</span></div>';}).join('')
-      : '<div class="ac-nil">ไม่พบอุปกรณ์</div>';
-    dd.style.display='';
+  function renderList(q) {
+    const query    = (q||'').toLowerCase().trim();
+    const allEq    = state.equipment || [];
+    const filtered = allEq.filter(e => !query || (e.name||e.Name||'').toLowerCase().includes(query));
+    if (allEq.length === 0) {
+      dd.innerHTML = '<div class="ac-nil">⚠️ ไม่มีข้อมูลอุปกรณ์ กรุณาไปหน้าจัดการอุปกรณ์ก่อน</div>';
+      dd.style.display = ''; return;
+    }
+    if (filtered.length === 0) {
+      dd.innerHTML = '<div class="ac-nil">ไม่พบอุปกรณ์ที่ตรงกัน</div>';
+      dd.style.display = ''; return;
+    }
+    dd.innerHTML = filtered.map(e => {
+      const name   = e.name   || e.Name   || '';
+      const status = e.status || e.Status || 'ว่าง';
+      const cat    = e.category || e.Category || '';
+      const isOk   = status === 'ว่าง';
+      const safe   = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      return '<div class="ac-it" onclick="acPick(\''+uid+'\',' + "'" + hiddenId + "'" + ',\''+safe+'\')">'
+           + '<span>'+name+(cat?' <span style="color:var(--text2);font-size:.73rem">('+cat+')</span>':'')+'</span>'
+           + '<span class="ac-badge '+(isOk?'ac-ok':'ac-no')+'">'+status+'</span></div>';
+    }).join('');
+    dd.style.display = '';
   }
-  inp.addEventListener('input', ()=>{ show(inp.value); if(hid) hid.value=''; });
-  inp.addEventListener('focus', ()=>show(inp.value));
-  inp.addEventListener('keydown', ev=>{
-    const its=[...dd.querySelectorAll('.ac-it')], cur=dd.querySelector('.sel'), ci=its.indexOf(cur);
-    if(ev.key==='ArrowDown'){ev.preventDefault();const ni=Math.min(ci+1,its.length-1);its.forEach((x,i)=>x.classList.toggle('sel',i===ni));its[ni]?.scrollIntoView({block:'nearest'});}
-    if(ev.key==='ArrowUp'){ev.preventDefault();const ni=Math.max(ci-1,0);its.forEach((x,i)=>x.classList.toggle('sel',i===ni));its[ni]?.scrollIntoView({block:'nearest'});}
-    if(ev.key==='Enter'&&cur){ev.preventDefault();cur.click();}
-    if(ev.key==='Escape') dd.style.display='none';
+
+  inp.addEventListener('input',  () => { renderList(inp.value); if (hid) hid.value = ''; });
+  inp.addEventListener('focus',  () => renderList(inp.value));
+  inp.addEventListener('keydown', ev => {
+    const its = [...dd.querySelectorAll('.ac-it')], cur = dd.querySelector('.sel'), ci = its.indexOf(cur);
+    if (ev.key === 'ArrowDown') { ev.preventDefault(); const ni=Math.min(ci+1,its.length-1); its.forEach((x,i)=>x.classList.toggle('sel',i===ni)); its[ni]?.scrollIntoView({block:'nearest'}); }
+    if (ev.key === 'ArrowUp')   { ev.preventDefault(); const ni=Math.max(ci-1,0);            its.forEach((x,i)=>x.classList.toggle('sel',i===ni)); its[ni]?.scrollIntoView({block:'nearest'}); }
+    if (ev.key === 'Enter' && cur) { ev.preventDefault(); cur.click(); }
+    if (ev.key === 'Escape') dd.style.display = 'none';
   });
-  document.addEventListener('click', ev=>{ if(!wrap.contains(ev.target)) dd.style.display='none'; }, true);
-  if(initVal&&hid) hid.value=initVal;
+  document.addEventListener('click', ev => { if (!wrap.contains(ev.target)) dd.style.display='none'; }, true);
+  if (initVal && hid) hid.value = initVal;
 }
 
 function acPick(uid, hiddenId, name) {
