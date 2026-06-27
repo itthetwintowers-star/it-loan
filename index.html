@@ -548,6 +548,11 @@ function simulateGAS(action, payload) {
       state.users = state.users.filter(u => u.username !== payload.username);
       return { success: true };
     }
+    case 'updateUserEmail': {
+      const u = state.users.find(x => x.username === payload.username);
+      if (u) u.email = payload.email;
+      return { success: true };
+    }
     case 'changePassword': {
       const u = state.users.find(x => x.username === payload.username);
       if (u) u.password = payload.newPassword;
@@ -1965,11 +1970,14 @@ async function renderUsers() {
           <span class="loading-spinner" style="border-color:rgba(0,0,0,0.15);border-top-color:var(--primary)"></span> กำลังโหลด...
         </span>
       </div>
+      <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.82rem;color:#1565c0">
+        📧 เพิ่ม Email ให้แต่ละ user เพื่อให้ระบบส่งเมลแจ้งเตือนเมื่ออนุมัติการยืม
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Username</th><th>Role</th><th>สิทธิ์</th><th>จัดการ</th></tr></thead>
+          <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>สิทธิ์</th><th>จัดการ</th></tr></thead>
           <tbody id="usersBody">
-            <tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text2)">
+            <tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text2)">
               <span class="loading-spinner" style="border-color:rgba(0,0,0,0.15);border-top-color:var(--accent);width:22px;height:22px;border-width:3px"></span>
             </td></tr>
           </tbody>
@@ -1992,12 +2000,12 @@ async function renderUsers() {
 
 function renderUsersRows() {
   if (!state.users || state.users.length === 0) {
-    return `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text2)">ไม่มีข้อมูลผู้ใช้</td></tr>`;
+    return `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text2)">ไม่มีข้อมูลผู้ใช้</td></tr>`;
   }
   return state.users.map(u => {
-    // GAS ส่ง lowercase keys: username, password, role
     const uname = String(u.username || u.Username || '').trim();
     const role  = String(u.role     || u.Role     || 'user').trim();
+    const email = String(u.email    || u.Email    || '').trim();
     if (!uname) return '';
     return `
     <tr>
@@ -2007,10 +2015,16 @@ function renderUsersRows() {
           <span style="font-weight:600">${uname}</span>
         </div>
       </td>
+      <td>
+        ${email
+          ? `<span style="font-size:0.83rem;color:var(--text2)">📧 ${email}</span>`
+          : `<span style="font-size:0.8rem;color:var(--warn)">⚠️ ยังไม่มี email</span>`}
+      </td>
       <td><span style="font-size:0.85rem;color:var(--text2)">${role}</span></td>
       <td>${roleBadge(role)}</td>
       <td>
         <div class="row-actions">
+          <button class="btn btn-accent btn-sm" onclick="openEditEmail('${uname}','${email}')">📧 Email</button>
           <button class="btn btn-danger btn-sm" onclick="deleteUser('${uname}')"
             ${uname === 'admin' ? 'disabled title="ไม่สามารถลบ admin"' : ''}>🗑 ลบ</button>
         </div>
@@ -2023,6 +2037,8 @@ function openAddUser() {
   openModal('➕ เพิ่มผู้ใช้ใหม่', `
     <div class="form-group"><label>Username</label><input type="text" id="newUser" placeholder="username"></div>
     <div class="form-group"><label>Password</label><input type="password" id="newPass" placeholder="••••"></div>
+    <div class="form-group"><label>📧 Email <span style="color:var(--text2);font-weight:400;font-size:0.8rem">(สำหรับแจ้งเตือนอนุมัติ)</span></label>
+      <input type="email" id="newEmail" placeholder="example@hotel.com"></div>
     <div class="form-group"><label>Role</label>
       <select id="newRole">
         <option value="user">User</option>
@@ -2037,17 +2053,53 @@ function openAddUser() {
   `);
 }
 
+function openEditEmail(username, currentEmail) {
+  openModal('📧 แก้ไข Email', `
+    <div style="margin-bottom:14px;font-size:0.88rem;color:var(--text2)">
+      ตั้งค่า Email สำหรับ <strong>${username}</strong><br>
+      ระบบจะส่งเมลแจ้งเตือนเมื่ออนุมัติการยืม
+    </div>
+    <div class="form-group">
+      <label>📧 Email Address</label>
+      <input type="email" id="editEmailInput" value="${currentEmail}" placeholder="example@hotel.com">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveUserEmail('${username}')">💾 บันทึก</button>
+    </div>
+  `);
+}
+
+async function saveUserEmail(username) {
+  const email = document.getElementById('editEmailInput').value.trim();
+  const saveBtn = document.querySelector('#modalBody .btn-primary');
+  if (saveBtn) { saveBtn.disabled=true; saveBtn.innerHTML='<span class="loading-spinner"></span> กำลังบันทึก...'; }
+  const res = await gasRequest('updateUserEmail', { username, email });
+  if (res.success) {
+    // อัปเดต local state
+    const u = state.users.find(x=>(x.username||'')===username);
+    if (u) u.email = email;
+    showToast('✅ บันทึก Email แล้ว');
+    closeModal();
+    await renderUsers();
+  } else {
+    showToast('❌ ' + (res.message||'เกิดข้อผิดพลาด'));
+    if (saveBtn) { saveBtn.disabled=false; saveBtn.innerHTML='💾 บันทึก'; }
+  }
+}
+
 async function saveAddUser() {
   const username = document.getElementById('newUser').value.trim();
   const password = document.getElementById('newPass').value.trim();
-  const role = document.getElementById('newRole').value;
-  if (!username || !password) { showToast('⚠️ กรุณากรอกข้อมูลให้ครบ'); return; }
+  const email    = document.getElementById('newEmail').value.trim();
+  const role     = document.getElementById('newRole').value;
+  if (!username || !password) { showToast('⚠️ กรุณากรอก Username และ Password'); return; }
   if (state.users.find(u => (u.username||u.Username||'') === username)) {
     showToast('⚠️ Username นี้มีอยู่แล้ว'); return;
   }
   const saveBtn = document.querySelector('#modalBody .btn-primary');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<span class="loading-spinner"></span> กำลังบันทึก...'; }
-  const res = await gasRequest('addUser', { data: { username, password, role } });
+  const res = await gasRequest('addUser', { data: { username, password, role, email } });
   if (res.success) {
     showToast('✅ เพิ่มผู้ใช้แล้ว');
     closeModal();
