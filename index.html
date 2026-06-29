@@ -1475,6 +1475,16 @@ function filterBorrowEq() {
 }
 
 async function submitBorrow() {
+  // ป้องกันส่งซ้ำ — ล็อกปุ่มทันที
+  const submitBtn = document.querySelector('button[onclick="submitBorrow()"]');
+  if (submitBtn && submitBtn.disabled) return;  // กำลังส่งอยู่แล้ว
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<span class="loading-spinner"></span> กำลังส่ง...'; }
+
+  // helper คืนค่าปุ่ม
+  function unlockBtn() {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '📤 ส่งใบขอยืม'; }
+  }
+
   const name  = document.getElementById('borrowName').value.trim();
   const eq    = document.getElementById('borrowEq').value;
   const start = document.getElementById('borrowStart').value;
@@ -1483,15 +1493,16 @@ async function submitBorrow() {
   const dept  = borrowState.dept ? DEPARTMENTS.find(d=>d.id===borrowState.dept)?.name : '';
 
   if (!name || !eq || !start || !end || !dept) {
-    showToast('⚠️ กรุณากรอกข้อมูลให้ครบ และเลือกแผนก'); return;
+    showToast('⚠️ กรุณากรอกข้อมูลให้ครบ และเลือกแผนก'); unlockBtn(); return;
   }
   if (new Date(end) <= new Date(start)) {
-    showToast('⚠️ วันที่คืนต้องหลังจากวันที่ยืม'); return;
+    showToast('⚠️ วันที่คืนต้องหลังจากวันที่ยืม'); unlockBtn(); return;
   }
 
   // ✅ Rate Limiting Check
   const rl = checkRateLimit(state.user.username);
   if (!rl.allowed) {
+    unlockBtn();
     openModal('🚫 ส่งใบขอยืมเกินกำหนด', `
       <div style="text-align:center;padding:8px 0 16px">
         <div style="font-size:3rem;margin-bottom:12px">🛡️</div>
@@ -1509,7 +1520,7 @@ async function submitBorrow() {
     return;
   }
 
-  // ตรวจสอบช่วงเวลาซ้ำ — อุปกรณ์เดียวกัน ช่วงเวลาทับกัน สถานะ รออนุมัติ/อนุมัติ
+  // ตรวจสอบช่วงเวลาซ้ำ
   const newStart = new Date(start);
   const newEnd   = new Date(end);
   const conflict = state.requests.find(r => {
@@ -1520,11 +1531,11 @@ async function submitBorrow() {
     const rStart = new Date(r.startdate || r.startDate || '');
     const rEnd   = new Date(r.enddate   || r.endDate   || '');
     if (isNaN(rStart) || isNaN(rEnd)) return false;
-    // ทับกันถ้า newStart < rEnd && newEnd > rStart
     return newStart < rEnd && newEnd > rStart;
   });
 
   if (conflict) {
+    unlockBtn();
     const cs = fmtDT(conflict.startdate || conflict.startDate || '');
     const ce = fmtDT(conflict.enddate   || conflict.endDate   || '');
     openModal('⚠️ อุปกรณ์ถูกจองแล้ว', `
@@ -1532,16 +1543,12 @@ async function submitBorrow() {
         <p style="margin-bottom:10px">อุปกรณ์ <strong>${eq}</strong> ถูกจองในช่วงเวลาที่เลือกแล้ว:</p>
         <div style="background:#fff8e1;border:1.5px solid #ffd54f;border-radius:8px;padding:12px">
           <div style="font-weight:600">👤 ${conflict.requester||'-'} (${conflict.dept||'-'})</div>
-          <div style="font-size:0.85rem;margin-top:4px;color:var(--text2)">
-            📅 ${cs} → ${ce}
-          </div>
+          <div style="font-size:0.85rem;margin-top:4px;color:var(--text2)">📅 ${cs} → ${ce}</div>
           <div style="margin-top:6px">${statusBadge(conflict.status||'-')}</div>
         </div>
         <p style="margin-top:12px;font-size:0.88rem;color:var(--text2)">กรุณาเลือกอุปกรณ์อื่น หรือเปลี่ยนช่วงเวลายืม</p>
       </div>
-      <div class="modal-actions">
-        <button class="btn btn-ghost" onclick="closeModal()">ปิด</button>
-      </div>
+      <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">ปิด</button></div>
     `);
     return;
   }
@@ -1558,17 +1565,19 @@ async function submitBorrow() {
 
   if (res.success) {
     showToast('✅ ส่งใบขอยืมสำเร็จ รอการอนุมัติ');
-    // push to local state ทันที (lowercase keys เพื่อให้ตรงกับ GAS)
     state.requests.push({
       id: (res.data && res.data.id) || 'REQ-' + Date.now(),
       requester: name, dept, equipment: eq,
       startdate: start, enddate: end,
       days, hours, note, status: 'รออนุมัติ', handledby: ''
     });
+    updateNavBadge();
     borrowState.dept = null;
     renderBorrow();
+    populateBorrowEq();
   } else {
     showToast('❌ เกิดข้อผิดพลาด: ' + (res.message || 'กรุณาลองใหม่'));
+    unlockBtn();
   }
 }
 
