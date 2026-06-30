@@ -1372,7 +1372,8 @@ function renderBorrow() {
       <div class="form-row">
         <div class="form-group">
           <label>👤 ชื่อ-สกุล ผู้ยืม <span style="color:var(--danger)">*</span></label>
-          <input type="text" id="borrowName" placeholder="กรอกชื่อ-สกุล">
+          <input type="text" id="borrowName" placeholder="กรอกชื่อ-สกุล" value="${state.user.username}">
+          <div style="font-size:0.72rem;color:var(--text2);margin-top:3px">💡 ระบบดึงจาก Username ของคุณ — แก้ไขได้ถ้าต้องการระบุชื่ออื่น (เช่นยืมแทนคนอื่น)</div>
         </div>
         <div class="form-group">
           <label>💻 อุปกรณ์ที่ต้องการยืม <span style="color:var(--danger)">*</span></label>
@@ -1560,7 +1561,8 @@ async function submitBorrow() {
 
   const res = await gasRequest('addRequest', { data: {
     requester: name, dept, equipment: eq,
-    startDate: start, endDate: end, days, hours, note
+    startDate: start, endDate: end, days, hours, note,
+    loginUsername: state.user.username  // username ที่ login จริง — ใช้หา email แม่นยำ
   }});
 
   if (res.success) {
@@ -1569,7 +1571,8 @@ async function submitBorrow() {
       id: (res.data && res.data.id) || 'REQ-' + Date.now(),
       requester: name, dept, equipment: eq,
       startdate: start, enddate: end,
-      days, hours, note, status: 'รออนุมัติ', handledby: ''
+      days, hours, note, status: 'รออนุมัติ', handledby: '',
+      loginusername: state.user.username
     });
     updateNavBadge();
     borrowState.dept = null;
@@ -1980,7 +1983,7 @@ async function renderUsers() {
         </span>
       </div>
       <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.82rem;color:#1565c0">
-        📧 เพิ่ม Email ให้แต่ละ user เพื่อให้ระบบส่งเมลแจ้งเตือนเมื่ออนุมัติการยืม
+        📧 เพิ่ม Email ให้ user แต่ละคน — ระบบจับคู่จาก <b>Username ที่ Login</b> เสมอ ไม่ขึ้นกับชื่อที่กรอกในฟอร์มยืม
       </div>
       <div class="table-wrap">
         <table>
@@ -2092,18 +2095,18 @@ async function saveAddUser() {
 }
 
 function openEditEmail(username, currentEmail, currentDisplayName) {
-  openModal('📧 แก้ไข Email & ชื่อจริง', `
+  openModal('📧 แก้ไข Email', `
     <div style="margin-bottom:12px;font-size:0.85rem;color:var(--text2)">
-      ตั้งค่าสำหรับ <strong>${username}</strong> — ชื่อจริงต้องตรงกับที่กรอกในใบขอยืม
-    </div>
-    <div class="form-group">
-      <label>👤 ชื่อจริง <span style="color:var(--danger)">*</span></label>
-      <input type="text" id="editDisplayName" value="${currentDisplayName||''}" placeholder="เช่น สมชาย ใจดี">
-      <div style="font-size:0.75rem;color:var(--warn);margin-top:4px">⚠️ ต้องตรงกับชื่อที่กรอกในใบขอยืมทุกครั้ง</div>
+      ตั้งค่า Email สำหรับ <strong>${username}</strong> — ระบบจะส่งเมลแจ้งเตือนตอนอนุมัติ<br>
+      <span style="color:var(--success)">✅ ระบบจับคู่จาก Username ที่ Login เสมอ ไม่ขึ้นกับชื่อในฟอร์ม</span>
     </div>
     <div class="form-group">
       <label>📧 Email</label>
       <input type="email" id="editEmailInput" value="${currentEmail||''}" placeholder="example@hotel.com">
+    </div>
+    <div class="form-group">
+      <label>👤 ชื่อจริง <span style="color:var(--text2);font-weight:400;font-size:0.78rem">(ไม่บังคับ — ใช้แสดงผลเท่านั้น)</span></label>
+      <input type="text" id="editDisplayName" value="${currentDisplayName||''}" placeholder="เช่น สมชาย ใจดี">
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
