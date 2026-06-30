@@ -776,7 +776,7 @@ function navigate(page) {
         renderBorrow();
         populateBorrowEq();
         break;
-      case 'history': renderHistory(); break;
+      case 'history': await renderHistory(); break;
       case 'settings': await renderSettings(); break;
       case 'users': await renderUsers(); break;
       case 'approve':   await renderApprove(); break;
@@ -1033,9 +1033,6 @@ function renderDashboard() {
     return thMonths[parseInt(m)] + (parseInt(y)+543-2500);
   };
 
-  // Rate limit
-  const rl = state.user ? getRateLimitStatus(state.user.username) : { count:0, max:3 };
-
   // Donut — ใช้ available/borrowed จริง
   const donutR = 40, donutCX = 60, donutCY = 60, donutStroke = 18;
   const donutCirc = 2 * Math.PI * donutR;
@@ -1083,28 +1080,6 @@ function renderDashboard() {
         <div><div class="stat-val">${pending}</div><div class="stat-label">รออนุมัติ</div></div>
       </div>
     </div>
-
-    <!-- RATE LIMIT BANNER -->
-    ${state.user && state.user.role === 'user' ? `
-    <div style="background:var(--card);border-radius:var(--radius);padding:12px 18px;margin-bottom:16px;
-                box-shadow:var(--shadow);display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-      <div style="font-size:1.2rem">🛡️</div>
-      <div style="flex:1;min-width:120px">
-        <div style="font-weight:600;font-size:0.88rem;color:var(--text)">วงเงินส่งใบขอยืม</div>
-        <div style="font-size:0.78rem;color:var(--text2)">สูงสุด ${RATE_LIMIT.maxRequests} ครั้ง / ชั่วโมง</div>
-      </div>
-      <div style="display:flex;gap:6px">
-        ${Array.from({length:RATE_LIMIT.maxRequests},(_,i)=>
-          `<div style="width:26px;height:26px;border-radius:50%;
-            background:${i<rl.count?'var(--warn)':'var(--success)'};
-            display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#fff;font-weight:700">
-            ${i<rl.count?'📤':'✓'}
-          </div>`).join('')}
-      </div>
-      <span style="font-size:0.85rem;font-weight:700;color:${rl.count>=rl.max?'var(--danger)':'var(--success)'}">
-        ${rl.count}/${rl.max}
-      </span>
-    </div>` : ''}
 
     <!-- ROW 1: Calendar + Pending -->
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px" class="dash-row">
@@ -1403,14 +1378,6 @@ function renderBorrow() {
       <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="submitBorrow()">📤 ส่งใบขอยืม</button>
         <button class="btn btn-ghost" onclick="resetBorrowForm()">🔄 ล้างข้อมูล</button>
-        ${(()=>{
-          const rl = state.user ? getRateLimitStatus(state.user.username) : {count:0,max:3};
-          const left = rl.max - rl.count;
-          const color = left === 0 ? 'var(--danger)' : left === 1 ? 'var(--warn)' : 'var(--success)';
-          return `<span style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:${color};font-weight:600;padding:8px 12px;background:var(--bg);border-radius:8px">
-            🛡️ ส่งได้อีก ${left}/${rl.max} ครั้ง (ต่อชั่วโมง)
-          </span>`;
-        })()}
       </div>
     </div>
   `;
@@ -1591,23 +1558,23 @@ function resetBorrowForm() {
 }
 
 // ==================== HISTORY ====================
-function renderHistory() {
+async function renderHistory() {
   const role = state.user.role;
-  const reqs = role === 'user'
-    ? state.requests.filter(r => r.requester === state.user.username)
-    : state.requests;
 
   document.getElementById('pageContent').innerHTML = `
     <div class="card">
       <div class="section-header">
         <h2>📜 ประวัติการยืมอุปกรณ์</h2>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${role !== 'user' ? `
-          <button class="btn btn-success btn-sm" onclick="exportCSV()">📥 Export CSV</button>
-          <button class="btn btn-accent btn-sm" onclick="exportExcel()">📊 Export Excel</button>
-          ` : ''}
-          <button class="btn btn-ghost btn-sm" onclick="renderHistory()">🔄 รีเฟรช</button>
-        </div>
+        <span id="histSyncStatus" style="font-size:0.8rem;color:var(--text2);display:flex;align-items:center;gap:6px">
+          <span class="loading-spinner" style="border-color:rgba(0,0,0,0.15);border-top-color:var(--primary)"></span> กำลังโหลด...
+        </span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        ${role !== 'user' ? `
+        <button class="btn btn-success btn-sm" onclick="exportCSV()">📥 Export CSV</button>
+        <button class="btn btn-accent btn-sm" onclick="exportExcel()">📊 Export Excel</button>
+        ` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="renderHistory()">🔄 รีเฟรช</button>
       </div>
       <div class="filters">
         <input type="text" id="histSearch" placeholder="🔍 ค้นหา..." oninput="filterHistory()">
@@ -1633,12 +1600,48 @@ function renderHistory() {
             </tr>
           </thead>
           <tbody id="histBody">
-            ${renderHistRows(reqs, role)}
+            <tr><td colspan="9" style="text-align:center;padding:36px;color:var(--text2)">
+              <span class="loading-spinner" style="border-color:rgba(0,0,0,0.15);border-top-color:var(--accent);width:24px;height:24px;border-width:3px"></span>
+            </td></tr>
           </tbody>
         </table>
       </div>
     </div>
   `;
+
+  // ดึงข้อมูลล่าสุดจาก Google Sheet
+  const res = await gasRequest('getRequests');
+  const syncEl = document.getElementById('histSyncStatus');
+  if (res.success) {
+    state.requests = res.data || [];
+    if (syncEl) syncEl.innerHTML = `<span style="color:var(--success)">✅ ซิงค์แล้ว (${state.requests.length} รายการ)</span>`;
+  } else {
+    if (syncEl) syncEl.innerHTML = `<span style="color:var(--danger)">⚠️ โหลดไม่สำเร็จ</span>`;
+    showToast('⚠️ โหลดข้อมูลไม่สำเร็จ: ' + (res.message || ''));
+  }
+
+  const reqs = getSortedHistory(role);
+  const bodyEl = document.getElementById('histBody');
+  if (bodyEl) bodyEl.innerHTML = renderHistRows(reqs, role);
+}
+
+// คืน array ที่ผ่าน filter ตาม role และเรียงล่าสุดอยู่บนสุด
+function getSortedHistory(role) {
+  let reqs = role === 'user'
+    ? state.requests.filter(r => r.requester === state.user.username)
+    : state.requests;
+
+  // เรียงตามวันที่ยืม (startdate) ใหม่สุดอยู่บน — fallback ใช้ ID (timestamp อยู่ในชื่อ REQ-xxx)
+  reqs = [...reqs].sort((a, b) => {
+    const da = parseDT(a.startdate || a.startDate || '');
+    const db = parseDT(b.startdate || b.startDate || '');
+    if (da && db) return db - da;           // ใหม่สุดก่อน
+    // fallback: เรียงจาก ID (REQ-<timestamp>) มากไปน้อย
+    const ta = parseInt(String(a.id||'').replace(/\D/g,'')) || 0;
+    const tb = parseInt(String(b.id||'').replace(/\D/g,'')) || 0;
+    return tb - ta;
+  });
+  return reqs;
 }
 
 
@@ -1679,7 +1682,7 @@ function filterHistory() {
   const st = document.getElementById('histStatus').value;
   const dept = document.getElementById('histDept').value;
   const role = state.user.role;
-  let reqs = role === 'user' ? state.requests.filter(r=>(r.requester)===state.user.username) : state.requests;
+  let reqs = getSortedHistory(role);
   if (s) reqs = reqs.filter(r => JSON.stringify(r).toLowerCase().includes(s));
   if (st) reqs = reqs.filter(r => (r.status) === st);
   if (dept) reqs = reqs.filter(r => (r.dept) === dept);
@@ -2406,31 +2409,6 @@ function renderProfile() {
               <div style="font-size:0.78rem;color:var(--text2)">ออกจากระบบอัตโนมัติเมื่อไม่มีการใช้งาน</div>
             </div>
             <span class="badge badge-success">30 นาที</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg);border-radius:8px">
-            <div>
-              <div style="font-weight:600;font-size:0.88rem">Rate Limit การยืม</div>
-              <div style="font-size:0.78rem;color:var(--text2)">จำกัดการส่งใบขอยืม</div>
-            </div>
-            <span class="badge badge-info">3 ครั้ง / ชั่วโมง</span>
-          </div>
-          <div style="padding:10px;background:var(--bg);border-radius:8px">
-            <div style="font-weight:600;font-size:0.88rem;margin-bottom:8px">📊 Rate Limit วันนี้</div>
-            ${(()=>{
-              const rl = getRateLimitStatus(u.username);
-              const left = rl.max - rl.count;
-              return `<div style="display:flex;gap:8px;align-items:center">
-                ${Array.from({length:rl.max},(_,i)=>`
-                  <div style="width:28px;height:28px;border-radius:50%;
-                    background:${i<rl.count?'var(--warn)':'#e8f5e9'};
-                    display:flex;align-items:center;justify-content:center;font-size:0.8rem">
-                    ${i<rl.count?'📤':'✓'}
-                  </div>`).join('')}
-                <span style="font-size:0.85rem;color:${left===0?'var(--danger)':'var(--success)'};font-weight:600;margin-left:6px">
-                  ส่งได้อีก ${left} ครั้ง
-                </span>
-              </div>`;
-            })()}
           </div>
         </div>
         <div style="margin-top:14px">
