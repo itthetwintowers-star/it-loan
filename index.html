@@ -1668,7 +1668,7 @@ function renderHistRows(reqs, role) {
       <td><span class="text-sm">${days?days+'วัน ':''} ${hours?hours+'ชม.':''}</span></td>
       <td>${statusBadge(status)}</td>
       <td><div class="row-actions">
-        ${status==='อนุมัติ' && role!=='user' ? `<button class="btn btn-success btn-sm" onclick="markReturned('${id}')">✔ คืนแล้ว</button>` : ''}
+        ${status==='อนุมัติ' && role!=='user' ? `<button class="btn btn-success btn-sm" onclick="markReturned('${id}', this)">✔ คืนแล้ว</button>` : ''}
         ${status==='รออนุมัติ' ? `<button class="btn btn-warn btn-sm" onclick="editRequest('${id}')">✏️ แก้ไข</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="viewRequest('${id}')" title="รายละเอียด">👁</button>
         <button class="btn btn-ghost btn-sm" onclick="printBorrowSlip('${id}')" title="พิมพ์ใบยืม">🖨️</button>
@@ -1689,18 +1689,24 @@ function filterHistory() {
   document.getElementById('histBody').innerHTML = renderHistRows(reqs, role);
 }
 
-async function markReturned(id) {
-  const res = await gasRequest('updateRequest', { id, data: { status: 'คืนแล้ว', handledBy: state.user.username }});
+async function markReturned(id, btnEl) {
+  // btnEl ส่งมาจาก onclick หรือค้นหาเอง
+  const btn = btnEl || document.querySelector(`button[onclick*="markReturned('${id}')"]`);
+  if (btn && btn.disabled) return; // กำลังดำเนินการอยู่
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loading-spinner"></span> กำลังบันทึก...'; }
+
+  const res = await gasRequest('updateRequest', { id, data: { status: 'คืนแล้ว', handledBy: state.user.username } });
   if (res.success) {
     const req = state.requests.find(r => String(r.id||'').trim() === String(id).trim());
     if (req) {
       req.status = 'คืนแล้ว';
       const eq = state.equipment.find(e => String(e.name||'') === String(req.equipment||''));
-      if (eq) eq.status = 'ว่าง';
+      if (eq) { eq.status = 'ว่าง'; eq.Status = 'ว่าง'; }
     }
     showToast('✅ บันทึกการคืนอุปกรณ์แล้ว');
     renderHistory();
   } else {
+    if (btn) { btn.disabled = false; btn.innerHTML = '✔ คืนแล้ว'; }
     showToast('❌ ' + (res.message || 'บันทึกไม่สำเร็จ'));
   }
 }
