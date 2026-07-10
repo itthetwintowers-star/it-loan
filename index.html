@@ -565,6 +565,14 @@ function simulateGAS(action, payload) {
         enddate: payload.data.endDate, days: payload.data.days, hours: payload.data.hours, note: payload.data.note };
       return { success: true };
     }
+    case 'cancelRequest': {
+      const i = state.requests.findIndex(r => String(r.id||'').trim() === String(payload.id).trim());
+      if (i >= 0) {
+        state.requests[i].status    = 'ยกเลิก';
+        state.requests[i].handledby = payload.handledBy || '';
+      }
+      return { success: true };
+    }
     default:
       return { success: false, message: 'Unknown action: ' + action };
   }
@@ -1669,6 +1677,7 @@ function renderHistRows(reqs, role) {
       <td>${statusBadge(status)}</td>
       <td><div class="row-actions">
         ${status==='อนุมัติ' && role!=='user' ? `<button class="btn btn-success btn-sm" onclick="markReturned('${id}', this)">✔ คืนแล้ว</button>` : ''}
+        ${status==='อนุมัติ' ? `<button class="btn btn-danger btn-sm" onclick="cancelRequest('${id}', this)">✖ ยกเลิก</button>` : ''}
         ${status==='รออนุมัติ' ? `<button class="btn btn-warn btn-sm" onclick="editRequest('${id}')">✏️ แก้ไข</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="viewRequest('${id}')" title="รายละเอียด">👁</button>
         <button class="btn btn-ghost btn-sm" onclick="printBorrowSlip('${id}')" title="พิมพ์ใบยืม">🖨️</button>
@@ -1708,6 +1717,73 @@ async function markReturned(id, btnEl) {
   } else {
     if (btn) { btn.disabled = false; btn.innerHTML = '✔ คืนแล้ว'; }
     showToast('❌ ' + (res.message || 'บันทึกไม่สำเร็จ'));
+  }
+}
+
+// ==================== CANCEL APPROVED REQUEST ====================
+function cancelRequest(id, btnEl) {
+  const r = state.requests.find(x => String(x.id||'').trim() === String(id).trim());
+  if (!r) { showToast('❌ ไม่พบรายการ'); return; }
+
+  const eq      = r.equipment || '-';
+  const req     = r.requester || '-';
+  const dept    = r.dept      || '-';
+  const startDT = fmtDT(r.startdate || r.startDate || '');
+  const endDT   = fmtDT(r.enddate   || r.endDate   || '');
+
+  openModal('✖ ยกเลิกการยืมอุปกรณ์', `
+    <div style="background:#fff8e1;border:1.5px solid #ffd54f;border-radius:10px;padding:14px;margin-bottom:16px">
+      <div style="font-weight:700;font-size:0.95rem;color:var(--text);margin-bottom:8px">⚠️ ยืนยันการยกเลิก?</div>
+      <div style="font-size:0.88rem;color:var(--text2);display:grid;gap:5px">
+        <div>👤 ผู้ยืม: <strong>${req}</strong> (${dept})</div>
+        <div>💻 อุปกรณ์: <strong>${eq}</strong></div>
+        <div>📅 ยืม: ${startDT}</div>
+        <div>📅 คืน: ${endDT}</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>📝 เหตุผลการยกเลิก</label>
+      <textarea id="cancelReason" rows="3" placeholder="เช่น ไม่ต้องการใช้อุปกรณ์แล้ว / เปลี่ยนแผน..."
+        style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:Sarabun,sans-serif;font-size:0.9rem;background:var(--input-bg);color:var(--text)"></textarea>
+    </div>
+    <p style="font-size:0.82rem;color:var(--danger);margin-bottom:4px">⚠️ อุปกรณ์จะกลับสู่สถานะ "ว่าง" และไม่สามารถยกเลิกย้อนหลังได้</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">ปิด</button>
+      <button class="btn btn-danger" onclick="confirmCancelRequest('${id}')">✖ ยืนยันยกเลิก</button>
+    </div>
+  `);
+}
+
+async function confirmCancelRequest(id) {
+  const reason  = (document.getElementById('cancelReason')?.value || '').trim();
+  const saveBtn = document.querySelector('#modalBody .btn-danger');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<span class="loading-spinner"></span> กำลังยกเลิก...'; }
+
+  const note = reason ? '[ยกเลิก] ' + reason : '[ยกเลิก]';
+  const res  = await gasRequest('cancelRequest', {
+    id,
+    handledBy: state.user.username,
+    reason: note
+  });
+
+  if (res.success) {
+    // อัปเดต local state
+    const r = state.requests.find(x => String(x.id||'').trim() === String(id).trim());
+    if (r) {
+      r.status    = 'ยกเลิก';
+      r.handledby = state.user.username;
+      r.note      = (r.note ? r.note + ' ' : '') + note;
+      // คืนสถานะอุปกรณ์
+      const eq = state.equipment.find(e => String(e.name||'') === String(r.equipment||''));
+      if (eq) { eq.status = 'ว่าง'; eq.Status = 'ว่าง'; }
+    }
+    showToast('✅ ยกเลิกการยืมแล้ว อุปกรณ์กลับสู่สถานะว่าง');
+    updateNavBadge();
+    closeModal();
+    renderHistory();
+  } else {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '✖ ยืนยันยกเลิก'; }
+    showToast('❌ ' + (res.message || 'เกิดข้อผิดพลาด'));
   }
 }
 
@@ -2819,9 +2895,10 @@ function acPick(uid, hiddenId, name) {
 function statusBadge(s) {
   const map = {
     'รออนุมัติ': 'badge-warn',
-    'อนุมัติ': 'badge-success',
-    'คืนแล้ว': 'badge-gray',
-    'ปฏิเสธ': 'badge-danger',
+    'อนุมัติ':   'badge-success',
+    'คืนแล้ว':   'badge-gray',
+    'ปฏิเสธ':    'badge-danger',
+    'ยกเลิก':    'badge-danger',
   };
   return `<span class="badge ${map[s]||'badge-info'}">${s}</span>`;
 }
