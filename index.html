@@ -371,21 +371,6 @@
         <label>รหัสผ่าน (Password)</label>
         <input type="password" id="loginPass" placeholder="••••" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
-      <div style="margin-bottom:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <label style="font-size:0.85rem;font-weight:600;color:var(--text2)">🔗 Google Apps Script URL</label>
-          <button onclick="toggleGasInput()" style="font-size:0.75rem;color:var(--accent);background:none;border:none;cursor:pointer;font-family:Sarabun,sans-serif" id="gasToggleBtn">ตั้งค่า</button>
-        </div>
-        <div id="gasInputWrap" style="display:none">
-          <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/..." style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:Sarabun,sans-serif;font-size:0.85rem;background:#fafbfd;color:var(--text);margin-bottom:6px">
-          <div style="display:flex;gap:6px">
-            <button onclick="saveGasUrl()" class="btn btn-accent btn-sm" style="flex:1;justify-content:center">💾 บันทึก URL</button>
-            <button onclick="testGasUrl()" class="btn btn-ghost btn-sm" style="flex:1;justify-content:center" id="testGasBtn">🔍 ทดสอบ</button>
-          </div>
-          <div id="gasTestResult" style="font-size:0.78rem;margin-top:6px;display:none"></div>
-        </div>
-        <div id="gasStatusBar" style="font-size:0.78rem;color:var(--text2)"></div>
-      </div>
       <div id="loginErr" style="color:#c62828;font-size:0.83rem;margin-bottom:10px;display:none"></div>
       <button class="btn btn-primary btn-full" onclick="doLogin()">
         <span id="loginBtnText">เข้าสู่ระบบ</span>
@@ -454,8 +439,10 @@
 <script>
 // ==================== CONFIG ====================
 const SHEET_ID = '1KjjWgA9YEAuoykD2p8Xr9_UYP7gfvEJkEUL2hnVx20U';
-const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbydtWX0j4UBFGdHbtV-J4gJJF9UzJj8kFqCvM9yqcVRFv8ABh7mP3TxV1lzz0bqrol6/exec';
-let GAS_URL = localStorage.getItem('gas_url') || DEFAULT_GAS_URL;
+// GAS URL ฝังในโค้ด — ไม่ต้องใส่ตอน login
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbydtWX0j4UBFGdHbtV-J4gJJF9UzJj8kFqCvM9yqcVRFv8ABh7mP3TxV1lzz0bqrol6/exec';
+// ล้างค่าเก่าที่เคยบันทึกใน localStorage (ถ้ามี)
+try { localStorage.removeItem('gas_url'); } catch(e) {}
 
 const DEPARTMENTS = [
   { id: 'accounting', name: 'Accounting', icon: '💰' },
@@ -596,60 +583,9 @@ async function syncAllData() {
   updateNavBadge();
 }
 
-// ==================== GAS URL HELPERS ====================
-function toggleGasInput() {
-  const wrap = document.getElementById('gasInputWrap');
-  const btn = document.getElementById('gasToggleBtn');
-  const input = document.getElementById('gasUrlInput');
-  if (wrap.style.display === 'none') {
-    wrap.style.display = '';
-    input.value = GAS_URL;
-    btn.textContent = 'ซ่อน';
-    input.focus();
-  } else {
-    wrap.style.display = 'none';
-    btn.textContent = 'ตั้งค่า';
-  }
-}
-
-function saveGasUrl() {
-  const val = document.getElementById('gasUrlInput').value.trim();
-  GAS_URL = val;
-  localStorage.setItem('gas_url', val);
-  updateGasStatusBar();
-  if (val) showToast('✅ บันทึก GAS URL แล้ว');
-  else showToast('🗑 ล้าง GAS URL แล้ว (Demo mode)');
-}
-
-async function testGasUrl() {
-  const val = document.getElementById('gasUrlInput').value.trim();
-  const resEl = document.getElementById('gasTestResult');
-  const btn = document.getElementById('testGasBtn');
-  if (!val) { resEl.style.display=''; resEl.style.color='var(--danger)'; resEl.textContent='⚠️ กรุณากรอก URL ก่อน'; return; }
-  btn.textContent = '⏳ กำลังทดสอบ...'; btn.disabled = true;
-  resEl.style.display=''; resEl.style.color='var(--text2)'; resEl.textContent='กำลังเชื่อมต่อ...';
-  try {
-    const url = val + '?payload=' + encodeURIComponent(JSON.stringify({ action: 'ping' }));
-    const res = await fetch(url, { method: 'GET', redirect: 'follow' });
-    if (res.ok) {
-      resEl.style.color='var(--success)'; resEl.textContent='✅ เชื่อมต่อสำเร็จ! GAS ทำงานปกติ';
-    } else {
-      resEl.style.color='var(--danger)'; resEl.textContent='❌ HTTP ' + res.status + ' - ตรวจสอบ URL และ Deploy settings';
-    }
-  } catch(e) {
-    resEl.style.color='var(--danger)'; resEl.textContent='❌ เชื่อมต่อไม่ได้: ' + e.message;
-  }
-  btn.textContent = '🔍 ทดสอบ'; btn.disabled = false;
-}
-
+// ==================== GAS URL HELPERS (ไม่ต้องตั้งค่าจากหน้า login แล้ว) ====================
 function updateGasStatusBar() {
-  const el = document.getElementById('gasStatusBar');
-  if (!el) return;
-  if (GAS_URL) {
-    el.innerHTML = `<span style="color:var(--success)">✅ เชื่อมกับ Google Sheet แล้ว</span>`;
-  } else {
-    el.innerHTML = `<span style="color:var(--warn)">⚠️ Demo mode — ข้อมูลไม่บันทึกจริง</span>`;
-  }
+  // ไม่มี UI บน login แล้ว — เก็บฟังก์ชันไว้เผื่อเรียกจากที่อื่น
 }
 
 // ==================== LOGIN ====================
