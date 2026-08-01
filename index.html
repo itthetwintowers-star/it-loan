@@ -465,6 +465,7 @@ let state = {
   equipment: [],
   users: [],
   requests: [],
+  handovers: [],
   loading: false,
   calMonth: new Date().getMonth(),
   calYear: new Date().getFullYear(),
@@ -474,21 +475,35 @@ let state = {
 // ไม่มี demo data — ข้อมูลทั้งหมดมาจาก Google Sheet เท่านั้น
 
 // ==================== GOOGLE APPS SCRIPT API ====================
-// GAS รับผ่าน GET + payload เป็น base64 JSON เพื่อหลีก CORS preflight
+// ใช้ POST + text/plain เพื่อหลีก CORS preflight และรองรับ payload ใหญ่ (ลายเซ็น)
 async function gasRequest(action, payload = {}) {
   if (!GAS_URL) return simulateGAS(action, payload);
   try {
     const body = JSON.stringify({ action, ...payload });
-    // ใช้ GET + query param เพื่อหลีก CORS issue
-    const url = GAS_URL + '?payload=' + encodeURIComponent(body);
-    const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+    // POST ด้วย text/plain = ไม่มี preflight, รองรับ body ใหญ่
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: body,
+      redirect: 'follow',
+    });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     return json;
   } catch (err) {
-    console.warn('GAS fetch failed, using demo mode:', err.message);
-    showToast('⚠️ ไม่สามารถเชื่อม Google Sheet ได้: ' + err.message);
-    return simulateGAS(action, payload);
+    // fallback GET สำหรับ action เล็ก ๆ (เช่น ping / login)
+    try {
+      const body = JSON.stringify({ action, ...payload });
+      if (body.length > 1500) throw err; // ใหญ่เกิน — อย่าลอง GET
+      const url = GAS_URL + '?payload=' + encodeURIComponent(body);
+      const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (err2) {
+      console.warn('GAS fetch failed, using demo mode:', err2.message);
+      showToast('⚠️ ไม่สามารถเชื่อม Google Sheet ได้: ' + err2.message);
+      return simulateGAS(action, payload);
+    }
   }
 }
 
@@ -560,6 +575,31 @@ function simulateGAS(action, payload) {
       }
       return { success: true };
     }
+    case 'getHandovers':
+      return { success: true, data: state.handovers || [] };
+    case 'addHandover': {
+      const ho = {
+        id: 'AH-' + Date.now(),
+        ...payload.data,
+        items: typeof payload.data.items === 'string' ? payload.data.items : JSON.stringify(payload.data.items || []),
+        status: 'รออนุมัติ',
+        handledby: '',
+        createdat: new Date().toISOString().slice(0, 16).replace('T', ' ')
+      };
+      state.handovers = state.handovers || [];
+      state.handovers.push(ho);
+      return { success: true, data: ho };
+    }
+    case 'updateHandover': {
+      const i = (state.handovers || []).findIndex(h => String(h.id||'').trim() === String(payload.id).trim());
+      if (i >= 0) {
+        state.handovers[i] = { ...state.handovers[i], ...payload.data };
+        if (payload.data.status === 'เสร็จแล้ว') {
+          state.handovers[i].completedat = new Date().toISOString().slice(0, 16).replace('T', ' ');
+        }
+      }
+      return { success: true };
+    }
     default:
       return { success: false, message: 'Unknown action: ' + action };
   }
@@ -570,16 +610,19 @@ function initData() {
   state.equipment = [];
   state.users = [];
   state.requests = [];
+  state.handovers = [];
 }
 
 // ==================== SYNC หลัง login ====================
 async function syncAllData() {
-  const [eqRes, reqRes] = await Promise.all([
+  const [eqRes, reqRes, hoRes] = await Promise.all([
     gasRequest('getEquipment'),
     gasRequest('getRequests'),
+    gasRequest('getHandovers'),
   ]);
   if (eqRes.success)  state.equipment = eqRes.data  || [];
   if (reqRes.success) state.requests  = reqRes.data  || [];
+  if (hoRes.success)  state.handovers = hoRes.data  || [];
   updateNavBadge();
 }
 
@@ -660,13 +703,15 @@ function logout() {
 
 // ==================== NAV ====================
 const ALL_PAGES = [
-  { id: 'dashboard', label: 'Dashboard',      icon: '📊', roles: ['admin','it','user'] },
-  { id: 'borrow',    label: 'ยืมอุปกรณ์',     icon: '📋', roles: ['admin','it','user'] },
-  { id: 'history',   label: 'ประวัติการยืม',   icon: '📜', roles: ['admin','it','user'] },
-  { id: 'settings',  label: 'จัดการอุปกรณ์',   icon: '⚙️', roles: ['admin','it'] },
-  { id: 'users',     label: 'จัดการผู้ใช้',    icon: '👥', roles: ['admin'] },
-  { id: 'approve',   label: 'อนุมัติการยืม',   icon: '✅', roles: ['admin','it'] },
-  { id: 'profile',   label: 'โปรไฟล์',         icon: '👤', roles: ['admin','it','user'] },
+  { id: 'dashboard', label: 'Dashboard',        icon: '📊', roles: ['admin','it','user'] },
+  { id: 'borrow',    label: 'ยืมอุปกรณ์',       icon: '📋', roles: ['admin','it','user'] },
+  { id: 'history',   label: 'ประวัติการยืม',     icon: '📜', roles: ['admin','it','user'] },
+  { id: 'handover',  label: 'รับมอบ–คืนอุปกรณ์', icon: '📦', roles: ['admin','it','user'] },
+  { id: 'settings',  label: 'จัดการอุปกรณ์',     icon: '⚙️', roles: ['admin','it'] },
+  { id: 'users',     label: 'จัดการผู้ใช้',      icon: '👥', roles: ['admin'] },
+  { id: 'approve',   label: 'อนุมัติการยืม',     icon: '✅', roles: ['admin','it'] },
+  { id: 'handoverApprove', label: 'อนุมัติรับมอบ–คืน', icon: '📝', roles: ['admin','it'] },
+  { id: 'profile',   label: 'โปรไฟล์',           icon: '👤', roles: ['admin','it','user'] },
 ];
 
 function buildNav() {
@@ -674,10 +719,14 @@ function buildNav() {
   const role = state.user.role;
   const pages = ALL_PAGES.filter(p => p.roles.includes(role));
   menu.innerHTML = pages.map(p => {
-    // Badge สำหรับ approve
     let badge = '';
     if (p.id === 'approve') {
       const cnt = state.requests.filter(r => (r.status||'') === 'รออนุมัติ').length;
+      if (cnt > 0) badge = `<span style="margin-left:auto;background:#e53935;color:#fff;border-radius:10px;
+        padding:1px 7px;font-size:0.72rem;font-weight:700;min-width:20px;text-align:center">${cnt}</span>`;
+    }
+    if (p.id === 'handoverApprove') {
+      const cnt = (state.handovers || []).filter(h => (h.status||'') === 'รออนุมัติ').length;
       if (cnt > 0) badge = `<span style="margin-left:auto;background:#e53935;color:#fff;border-radius:10px;
         padding:1px 7px;font-size:0.72rem;font-weight:700;min-width:20px;text-align:center">${cnt}</span>`;
     }
@@ -688,16 +737,31 @@ function buildNav() {
 }
 
 function updateNavBadge() {
-  const cnt   = state.requests.filter(r => (r.status||'') === 'รออนุมัติ').length;
+  // Badge อนุมัติการยืม
+  const cnt = state.requests.filter(r => (r.status||'') === 'รออนุมัติ').length;
   const navEl = document.getElementById('nav-approve');
-  if (!navEl) return;
-  const old = navEl.querySelector('span[style*="background:#e53935"]');
-  if (old) old.remove();
-  if (cnt > 0) {
-    const badge = document.createElement('span');
-    badge.style.cssText = 'margin-left:auto;background:#e53935;color:#fff;border-radius:10px;padding:1px 7px;font-size:0.72rem;font-weight:700;min-width:20px;text-align:center';
-    badge.textContent = cnt;
-    navEl.appendChild(badge);
+  if (navEl) {
+    const old = navEl.querySelector('span[style*="background:#e53935"]');
+    if (old) old.remove();
+    if (cnt > 0) {
+      const badge = document.createElement('span');
+      badge.style.cssText = 'margin-left:auto;background:#e53935;color:#fff;border-radius:10px;padding:1px 7px;font-size:0.72rem;font-weight:700;min-width:20px;text-align:center';
+      badge.textContent = cnt;
+      navEl.appendChild(badge);
+    }
+  }
+  // Badge อนุมัติรับมอบ–คืน
+  const hoCnt = (state.handovers || []).filter(h => (h.status||'') === 'รออนุมัติ').length;
+  const hoNav = document.getElementById('nav-handoverApprove');
+  if (hoNav) {
+    const old2 = hoNav.querySelector('span[style*="background:#e53935"]');
+    if (old2) old2.remove();
+    if (hoCnt > 0) {
+      const badge2 = document.createElement('span');
+      badge2.style.cssText = 'margin-left:auto;background:#e53935;color:#fff;border-radius:10px;padding:1px 7px;font-size:0.72rem;font-weight:700;min-width:20px;text-align:center';
+      badge2.textContent = hoCnt;
+      hoNav.appendChild(badge2);
+    }
   }
 }
 
@@ -721,9 +785,11 @@ function navigate(page) {
         populateBorrowEq();
         break;
       case 'history': await renderHistory(); break;
+      case 'handover': await renderHandover(); break;
       case 'settings': await renderSettings(); break;
       case 'users': await renderUsers(); break;
       case 'approve':   await renderApprove(); break;
+      case 'handoverApprove': await renderHandoverApprove(); break;
       case 'profile':   renderProfile(); break;
     }
   }, 80);
@@ -2833,6 +2899,7 @@ function statusBadge(s) {
     'รออนุมัติ': 'badge-warn',
     'อนุมัติ':   'badge-success',
     'คืนแล้ว':   'badge-gray',
+    'เสร็จแล้ว':  'badge-success',
     'ปฏิเสธ':    'badge-danger',
     'ยกเลิก':    'badge-danger',
   };
@@ -2849,6 +2916,435 @@ function roleBadge(r) {
   if (r === 'admin') return `<span class="badge badge-danger">👑 Admin</span>`;
   if (r === 'it') return `<span class="badge badge-accent">💻 IT</span>`;
   return `<span class="badge badge-info">👤 User</span>`;
+}
+
+// ==================== ASSET HANDOVER ====================
+let _hoItems = []; // รายการอุปกรณ์ในฟอร์มปัจจุบัน
+
+async function renderHandover() {
+  const res = await gasRequest('getHandovers');
+  if (res.success) state.handovers = res.data || [];
+  _hoItems = [];
+  const u = state.user || {};
+  const myList = (state.handovers || [])
+    .filter(h => (h.loginusername || h.employee || '') === u.username ||
+                 (h.employee || '') === (u.displayName || u.username))
+    .slice().reverse();
+
+  document.getElementById('pageContent').innerHTML = `
+    <div class="card">
+      <div class="card-title">📦 ฟอร์มรับมอบ / คืนอุปกรณ์ IT</div>
+      <div class="form-group">
+        <label>ประเภท</label>
+        <select id="hoType">
+          <option value="รับมอบ">📥 รับมอบ (เข้างาน / มอบอุปกรณ์)</option>
+          <option value="คืน">📤 คืน (ลาออก / ส่งคืนอุปกรณ์)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>ชื่อพนักงาน</label>
+        <input type="text" id="hoEmployee" value="${escHtml(u.displayName || u.username || '')}" placeholder="ชื่อ-นามสกุล">
+      </div>
+      <div class="form-group">
+        <label>แผนก</label>
+        <select id="hoDept">
+          ${DEPARTMENTS.map(d => `<option value="${d.name}">${d.icon} ${d.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>รายการอุปกรณ์ (พิมพ์เพิ่มได้ทีละชิ้น)</label>
+        <div id="hoItemList" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <div style="flex:2;min-width:140px">
+            <input type="text" id="hoItemName" placeholder="ชื่ออุปกรณ์ เช่น Notebook, Adapter">
+          </div>
+          <div style="flex:1;min-width:100px">
+            <input type="text" id="hoItemCond" placeholder="สภาพ เช่น ดี">
+          </div>
+          <div style="flex:1;min-width:100px">
+            <input type="text" id="hoItemAsset" placeholder="Asset No. (ถ้ามี)">
+          </div>
+          <button type="button" class="btn btn-accent btn-sm" onclick="hoAddItem()">＋ เพิ่ม</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>หมายเหตุ</label>
+        <textarea id="hoNote" rows="2" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"></textarea>
+      </div>
+      <div class="form-group">
+        <label>ลายเซ็นพนักงาน (วาดบนหน้าจอ)</label>
+        <div style="border:1.5px solid var(--border);border-radius:8px;background:var(--input-bg);overflow:hidden">
+          <canvas id="hoSigEmp" width="400" height="140" style="width:100%;height:140px;touch-action:none;cursor:crosshair;display:block"></canvas>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="clearSignature('hoSigEmp')">ล้างลายเซ็น</button>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn btn-primary" onclick="submitHandover()">📤 ส่งฟอร์ม</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📜 ประวัติของฉัน</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>รหัส</th><th>ประเภท</th><th>รายการ</th><th>สถานะ</th><th>วันที่</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${myList.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:var(--text2)">ยังไม่มีรายการ</td></tr>' :
+              myList.map(h => {
+                const items = parseHoItems(h.items);
+                const itemsShort = items.map(i => i.name).join(', ') || '-';
+                return `<tr>
+                  <td><code>${escHtml(h.id||'')}</code></td>
+                  <td>${h.type==='คืน'?'📤':'📥'} ${escHtml(h.type||'')}</td>
+                  <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(itemsShort)}</td>
+                  <td>${statusBadge(h.status||'')}</td>
+                  <td style="white-space:nowrap;font-size:0.82rem">${escHtml(h.createdat||'')}</td>
+                  <td>
+                    <button class="btn btn-ghost btn-sm" onclick="printHandover('${escHtml(h.id)}')">🖨 พิมพ์</button>
+                  </td>
+                </tr>`;
+              }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  initSignaturePad('hoSigEmp');
+  renderHoItemList();
+}
+
+function parseHoItems(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try { return JSON.parse(raw); } catch(e) { return []; }
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function hoAddItem() {
+  const name = (document.getElementById('hoItemName').value || '').trim();
+  if (!name) { showToast('⚠️ กรุณาพิมพ์ชื่ออุปกรณ์'); return; }
+  const condition = (document.getElementById('hoItemCond').value || '').trim() || 'ดี';
+  const assetNo = (document.getElementById('hoItemAsset').value || '').trim();
+  _hoItems.push({ name, condition, assetNo });
+  document.getElementById('hoItemName').value = '';
+  document.getElementById('hoItemCond').value = '';
+  document.getElementById('hoItemAsset').value = '';
+  renderHoItemList();
+}
+
+function hoRemoveItem(idx) {
+  _hoItems.splice(idx, 1);
+  renderHoItemList();
+}
+
+function renderHoItemList() {
+  const el = document.getElementById('hoItemList');
+  if (!el) return;
+  if (_hoItems.length === 0) {
+    el.innerHTML = '<div style="font-size:0.85rem;color:var(--text2)">ยังไม่มีรายการ — พิมพ์ชื่อแล้วกด 「เพิ่ม」</div>';
+    return;
+  }
+  el.innerHTML = _hoItems.map((it, i) =>
+    `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:0.9rem">
+      <span style="flex:1"><b>${escHtml(it.name)}</b>
+        <span style="color:var(--text2);font-size:0.8rem"> — ${escHtml(it.condition)}${it.assetNo ? ' | ' + escHtml(it.assetNo) : ''}</span>
+      </span>
+      <button type="button" class="btn btn-danger btn-sm" onclick="hoRemoveItem(${i})">ลบ</button>
+    </div>`
+  ).join('');
+}
+
+async function submitHandover() {
+  const type = document.getElementById('hoType').value;
+  const employee = (document.getElementById('hoEmployee').value || '').trim();
+  const department = document.getElementById('hoDept').value;
+  const note = (document.getElementById('hoNote').value || '').trim();
+  if (!employee) { showToast('⚠️ กรุณากรอกชื่อพนักงาน'); return; }
+  if (_hoItems.length === 0) { showToast('⚠️ กรุณาเพิ่มรายการอุปกรณ์อย่างน้อย 1 ชิ้น'); return; }
+  const sig = getSignatureData('hoSigEmp');
+  if (!sig) { showToast('⚠️ กรุณาเซ็นชื่อก่อนส่ง'); return; }
+
+  const res = await gasRequest('addHandover', {
+    data: {
+      type,
+      employee,
+      department,
+      loginUsername: state.user.username,
+      items: _hoItems,
+      note,
+      sigEmployee: sig
+    }
+  });
+  if (res.success) {
+    showToast('✅ ส่งฟอร์มสำเร็จ — รอ IT อนุมัติ');
+    if (res.data) state.handovers.push(res.data);
+    updateNavBadge();
+    navigate('handover');
+  } else {
+    showToast('❌ ' + (res.message || 'ส่งไม่สำเร็จ'));
+  }
+}
+
+async function renderHandoverApprove() {
+  const res = await gasRequest('getHandovers');
+  if (res.success) state.handovers = res.data || [];
+  updateNavBadge();
+  const list = (state.handovers || []).slice().reverse();
+
+  document.getElementById('pageContent').innerHTML = `
+    <div class="card">
+      <div class="card-title">📝 อนุมัติฟอร์มรับมอบ–คืนอุปกรณ์</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>รหัส</th><th>ประเภท</th><th>พนักงาน</th><th>แผนก</th><th>รายการ</th><th>สถานะ</th><th>วันที่</th><th>จัดการ</th>
+          </tr></thead>
+          <tbody>
+            ${list.length === 0 ? '<tr><td colspan="8" style="text-align:center;color:var(--text2)">ไม่มีรายการ</td></tr>' :
+              list.map(h => {
+                const items = parseHoItems(h.items);
+                const itemsShort = items.map(i => i.name).join(', ') || '-';
+                const st = h.status || '';
+                let actions = `
+                  <button class="btn btn-ghost btn-sm" onclick="printHandover('${escHtml(h.id)}')">🖨</button>
+                  <button class="btn btn-ghost btn-sm" onclick="viewHandoverDetail('${escHtml(h.id)}')">ดู</button>`;
+                if (st === 'รออนุมัติ') {
+                  actions += `
+                    <button class="btn btn-success btn-sm" onclick="hoApprove('${escHtml(h.id)}')">อนุมัติ</button>
+                    <button class="btn btn-danger btn-sm" onclick="hoReject('${escHtml(h.id)}')">ปฏิเสธ</button>`;
+                } else if (st === 'อนุมัติ') {
+                  actions += `<button class="btn btn-primary btn-sm" onclick="hoComplete('${escHtml(h.id)}')">ปิดงาน + เซ็น IT</button>`;
+                }
+                if (h.drivefileurl) {
+                  actions += ` <a class="btn btn-accent btn-sm" href="${escHtml(h.drivefileurl)}" target="_blank">📁 Drive</a>`;
+                }
+                return `<tr>
+                  <td><code>${escHtml(h.id||'')}</code></td>
+                  <td>${h.type==='คืน'?'📤':'📥'} ${escHtml(h.type||'')}</td>
+                  <td>${escHtml(h.employee||'')}</td>
+                  <td>${escHtml(h.department||'')}</td>
+                  <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(itemsShort)}</td>
+                  <td>${statusBadge(st)}</td>
+                  <td style="font-size:0.8rem;white-space:nowrap">${escHtml(h.createdat||'')}</td>
+                  <td style="white-space:nowrap">${actions}</td>
+                </tr>`;
+              }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function viewHandoverDetail(id) {
+  const h = (state.handovers || []).find(x => String(x.id) === String(id));
+  if (!h) return;
+  const items = parseHoItems(h.items);
+  openModal('📦 รายละเอียด ' + escHtml(h.id), `
+    <p><b>ประเภท:</b> ${escHtml(h.type)}</p>
+    <p><b>พนักงาน:</b> ${escHtml(h.employee)}</p>
+    <p><b>แผนก:</b> ${escHtml(h.department)}</p>
+    <p><b>สถานะ:</b> ${statusBadge(h.status||'')}</p>
+    <p><b>หมายเหตุ:</b> ${escHtml(h.note||'-')}</p>
+    <p><b>รายการอุปกรณ์:</b></p>
+    <ul style="padding-left:18px;margin:8px 0">
+      ${items.map(it => `<li>${escHtml(it.name)} — ${escHtml(it.condition||'')}${it.assetNo?' ['+escHtml(it.assetNo)+']':''}</li>`).join('') || '<li>-</li>'}
+    </ul>
+    ${h.sigemployee ? `<p><b>ลายเซ็นพนักงาน:</b></p><img src="${h.sigemployee}" style="max-width:100%;border:1px solid var(--border);border-radius:8px;background:#fff">` : ''}
+    ${h.sigit ? `<p style="margin-top:10px"><b>ลายเซ็น IT:</b></p><img src="${h.sigit}" style="max-width:100%;border:1px solid var(--border);border-radius:8px;background:#fff">` : ''}
+    ${h.drivefileurl ? `<p style="margin-top:10px"><a href="${escHtml(h.drivefileurl)}" target="_blank">📁 เปิดไฟล์บน Google Drive</a></p>` : ''}
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">ปิด</button>
+      <button class="btn btn-primary" onclick="printHandover('${escHtml(h.id)}')">🖨 พิมพ์</button>
+    </div>`);
+}
+
+async function hoApprove(id) {
+  const res = await gasRequest('updateHandover', {
+    id, data: { status: 'อนุมัติ', handledBy: state.user.username }
+  });
+  if (res.success) {
+    showToast('✅ อนุมัติแล้ว');
+    await renderHandoverApprove();
+  } else showToast('❌ ' + (res.message || 'ไม่สำเร็จ'));
+}
+
+async function hoReject(id) {
+  if (!confirm('ยืนยันปฏิเสธรายการ ' + id + ' ?')) return;
+  const res = await gasRequest('updateHandover', {
+    id, data: { status: 'ปฏิเสธ', handledBy: state.user.username }
+  });
+  if (res.success) {
+    showToast('ปฏิเสธแล้ว');
+    await renderHandoverApprove();
+  } else showToast('❌ ' + (res.message || 'ไม่สำเร็จ'));
+}
+
+function hoComplete(id) {
+  openModal('✅ ปิดงาน + ลายเซ็น IT — ' + escHtml(id), `
+    <p style="margin-bottom:12px;color:var(--text2);font-size:0.9rem">วาดลายเซ็น IT ด้านล่าง แล้วกดยืนยัน — ระบบจะบันทึก PDF ลง Google Drive อัตโนมัติ</p>
+    <div style="border:1.5px solid var(--border);border-radius:8px;background:#fff;overflow:hidden">
+      <canvas id="hoSigIT" width="400" height="140" style="width:100%;height:140px;touch-action:none;cursor:crosshair;display:block"></canvas>
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="clearSignature('hoSigIT')">ล้างลายเซ็น</button>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="confirmHoComplete('${escHtml(id)}')">ยืนยันปิดงาน</button>
+    </div>`);
+  setTimeout(() => initSignaturePad('hoSigIT'), 50);
+}
+
+async function confirmHoComplete(id) {
+  const sig = getSignatureData('hoSigIT');
+  if (!sig) { showToast('⚠️ กรุณาเซ็นชื่อ IT'); return; }
+  closeModal();
+  showToast('⏳ กำลังบันทึกและอัปโหลด Drive...');
+  const res = await gasRequest('updateHandover', {
+    id,
+    data: {
+      status: 'เสร็จแล้ว',
+      handledBy: state.user.username,
+      sigIT: sig
+    }
+  });
+  if (res.success) {
+    showToast('✅ ปิดงานสำเร็จ' + (res.driveUrl ? ' — บันทึก Drive แล้ว' : ''));
+    await renderHandoverApprove();
+  } else {
+    showToast('❌ ' + (res.message || 'ไม่สำเร็จ'));
+  }
+}
+
+// ---------- Signature pad ----------
+const _sigPads = {};
+function initSignaturePad(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  // ปรับขนาดตาม CSS
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.floor(rect.width * dpr);
+  canvas.height = Math.floor(140 * dpr);
+  ctx.scale(dpr, dpr);
+  ctx.strokeStyle = '#1a1a2e';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  let drawing = false;
+  const pos = (e) => {
+    const r = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - r.left, y: t.clientY - r.top };
+  };
+  const start = (e) => { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+  const move = (e) => { if (!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+  const end = () => { drawing = false; };
+
+  canvas.onmousedown = start;
+  canvas.onmousemove = move;
+  canvas.onmouseup = end;
+  canvas.onmouseleave = end;
+  canvas.ontouchstart = start;
+  canvas.ontouchmove = move;
+  canvas.ontouchend = end;
+  _sigPads[canvasId] = { canvas, ctx, hasInk: false };
+  // track ink
+  const mark = () => { if (_sigPads[canvasId]) _sigPads[canvasId].hasInk = true; };
+  canvas.addEventListener('mousedown', mark);
+  canvas.addEventListener('touchstart', mark);
+}
+
+function clearSignature(canvasId) {
+  const pad = _sigPads[canvasId];
+  if (!pad) return;
+  const { canvas, ctx } = pad;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  pad.hasInk = false;
+}
+
+function getSignatureData(canvasId) {
+  const pad = _sigPads[canvasId];
+  if (!pad || !pad.hasInk) return '';
+  // JPEG คุณภาพปานกลาง ลดขนาด payload
+  try {
+    return pad.canvas.toDataURL('image/jpeg', 0.55);
+  } catch(e) {
+    return pad.canvas.toDataURL('image/png');
+  }
+}
+
+// ---------- Print ----------
+function printHandover(id) {
+  const h = (state.handovers || []).find(x => String(x.id) === String(id));
+  if (!h) { showToast('ไม่พบรายการ'); return; }
+  const items = parseHoItems(h.items);
+  const itemsRows = items.map((it, i) =>
+    `<tr>
+      <td style="border:1px solid #333;padding:6px 8px;text-align:center">${i+1}</td>
+      <td style="border:1px solid #333;padding:6px 8px">${escHtml(it.name||'')}</td>
+      <td style="border:1px solid #333;padding:6px 8px">${escHtml(it.condition||'')}</td>
+      <td style="border:1px solid #333;padding:6px 8px">${escHtml(it.assetNo||'')}</td>
+    </tr>`
+  ).join('') || `<tr><td colspan="4" style="border:1px solid #333;padding:8px;text-align:center">-</td></tr>`;
+
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ฟอร์ม${escHtml(h.type)}-${escHtml(h.id)}</title>
+    <style>
+      body{font-family:Sarabun,Tahoma,sans-serif;padding:24px;color:#111;font-size:14px}
+      h1{font-size:18px;margin:0 0 4px;text-align:center}
+      .sub{text-align:center;color:#555;margin-bottom:20px;font-size:13px}
+      table{border-collapse:collapse;width:100%;margin:12px 0}
+      .meta td{padding:4px 8px;vertical-align:top}
+      .sig-box{border:1px solid #333;height:90px;margin-top:6px;display:flex;align-items:center;justify-content:center}
+      .sig-box img{max-height:88px;max-width:100%}
+      .sig-row{display:flex;gap:24px;margin-top:28px}
+      .sig-col{flex:1}
+      .line{border-bottom:1px solid #333;margin-top:60px;text-align:center;padding-bottom:4px;font-size:12px;color:#555}
+      @media print{body{padding:12px} .no-print{display:none}}
+    </style></head><body>
+    <h1>ฟอร์ม${escHtml(h.type)}อุปกรณ์ IT</h1>
+    <div class="sub">IT Equipment Loan System — ${escHtml(h.id||'')}</div>
+    <table class="meta">
+      <tr><td width="120"><b>ประเภท</b></td><td>${escHtml(h.type||'')}</td>
+          <td width="120"><b>สถานะ</b></td><td>${escHtml(h.status||'')}</td></tr>
+      <tr><td><b>พนักงาน</b></td><td>${escHtml(h.employee||'')}</td>
+          <td><b>แผนก</b></td><td>${escHtml(h.department||'')}</td></tr>
+      <tr><td><b>วันที่สร้าง</b></td><td>${escHtml(h.createdat||'')}</td>
+          <td><b>วันที่เสร็จ</b></td><td>${escHtml(h.completedat||'-')}</td></tr>
+      <tr><td><b>IT ผู้ดำเนินการ</b></td><td colspan="3">${escHtml(h.handledby||'-')}</td></tr>
+      <tr><td><b>หมายเหตุ</b></td><td colspan="3">${escHtml(h.note||'-')}</td></tr>
+    </table>
+    <p><b>รายการอุปกรณ์</b></p>
+    <table>
+      <thead><tr style="background:#eee">
+        <th style="border:1px solid #333;padding:6px;width:40px">#</th>
+        <th style="border:1px solid #333;padding:6px">ชื่ออุปกรณ์</th>
+        <th style="border:1px solid #333;padding:6px">สภาพ</th>
+        <th style="border:1px solid #333;padding:6px">Asset No.</th>
+      </tr></thead>
+      <tbody>${itemsRows}</tbody>
+    </table>
+    <div class="sig-row">
+      <div class="sig-col">
+        <b>ลายเซ็นพนักงาน</b>
+        <div class="sig-box">${h.sigemployee ? `<img src="${h.sigemployee}">` : '<span style="color:#999">เซ็นที่นี่</span>'}</div>
+        <div class="line">${escHtml(h.employee||'')} / วันที่ ............</div>
+      </div>
+      <div class="sig-col">
+        <b>ลายเซ็น IT</b>
+        <div class="sig-box">${h.sigit ? `<img src="${h.sigit}">` : '<span style="color:#999">เซ็นที่นี่</span>'}</div>
+        <div class="line">${escHtml(h.handledby||'IT Department')} / วันที่ ............</div>
+      </div>
+    </div>
+    <p class="no-print" style="margin-top:24px;text-align:center">
+      <button onclick="window.print()" style="padding:10px 24px;font-size:15px;cursor:pointer">🖨 พิมพ์</button>
+    </p>
+    </body></html>`);
+  w.document.close();
 }
 
 // ==================== MODAL ====================
